@@ -47,8 +47,8 @@ pip install pydevcheat
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/pydevcheat.git
-cd pydevcheat
+git clone https://github.com/elirancv/PyDevCheat.git
+cd PyDevCheat
 
 # Create and activate virtual environment
 python -m venv venv
@@ -211,7 +211,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 <div align="center">
-Made with ❤️ by [Your Name](https://github.com/yourusername)
+Made with ❤️ by [Eliran Cohen](https://github.com/elirancv)
 
 [⬆ Back to top](#-pydevcheat---your-cli-programming-companion)
 </div> 
