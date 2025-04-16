@@ -42,9 +42,14 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e .
-        pip install -r requirements.txt
-        pip install -r requirements-dev.txt
+        python -m pip install pytest pytest-qt pytest-xvfb
+        # Install package in development mode with verbose output
+        python -m pip install -v -e .
+        # Install other requirements
+        python -m pip install -r requirements.txt
+        python -m pip install -r requirements-dev.txt
+        # List installed packages for debugging
+        python -m pip list
     
     - name: Run linting
       run: |
@@ -53,9 +58,17 @@ jobs:
       continue-on-error: true  # Make linting optional for now
     
     - name: Run tests with xvfb
+      env:
+        QT_DEBUG_PLUGINS: 1
+        PYTHONPATH: ${{ github.workspace }}
       run: |
-        xvfb-run --auto-servernum pytest -v --tb=short
-      continue-on-error: true  # Make tests optional for now
+        # Print Python path and current directory
+        echo "PYTHONPATH: $PYTHONPATH"
+        echo "Current directory: $(pwd)"
+        echo "Directory contents:"
+        ls -la
+        # Run tests with maximum verbosity
+        xvfb-run --auto-servernum pytest -vv --tb=long
 
   publish:
     needs: test
