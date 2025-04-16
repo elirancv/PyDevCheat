@@ -8,7 +8,20 @@ class SettingsManager:
     def __init__(self):
         self.config_dir = Path.home() / ".pydevcheat"
         self.config_file = self.config_dir / "settings.json"
-        self.settings = UI_CONFIG.copy()  # Start with defaults
+        self.settings = {
+            'font_sizes': {
+                "source_header": 10,
+                "source_list": 9,
+                "content": 10,
+                "search": 10,
+                "title": 11
+            },
+            'ui': {
+                'style': 'dark',
+                'animations': True,
+                'smooth_scrolling': True
+            }
+        }
         self.load_settings()
 
     def load_settings(self):
@@ -17,9 +30,11 @@ class SettingsManager:
             if self.config_file.exists():
                 with open(self.config_file, 'r') as f:
                     saved_settings = json.load(f)
-                    # Only update if there are saved font sizes
+                    # Update settings while preserving defaults for missing values
                     if 'font_sizes' in saved_settings:
-                        self.settings['font_sizes'] = saved_settings['font_sizes']
+                        self.settings['font_sizes'].update(saved_settings['font_sizes'])
+                    if 'ui' in saved_settings:
+                        self.settings['ui'].update(saved_settings['ui'])
             else:
                 # Ensure defaults are saved on first run
                 self.ensure_defaults()
@@ -37,6 +52,11 @@ class SettingsManager:
             "content": 10,
             "search": 10,
             "title": 11
+        }
+        self.settings['ui'] = {
+            'style': 'dark',
+            'animations': True,
+            'smooth_scrolling': True
         }
         self.save_settings()
 

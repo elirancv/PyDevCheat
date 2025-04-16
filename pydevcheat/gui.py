@@ -11,8 +11,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal, QRunnable, QThreadPool, QObject, QTimer, QPropertyAnimation, QEasingCurve, QRect, pyqtProperty
 from PyQt6.QtGui import (QFont, QSyntaxHighlighter, QTextCharFormat, QColor,
                         QAction, QIcon, QPainter, QPainterPath, QLinearGradient, QKeySequence,
-                        QShortcut)
-from qt_material import apply_stylesheet
+                        QShortcut, QPixmap)
 import json
 import os
 from pathlib import Path
@@ -29,23 +28,28 @@ logger = logging.getLogger(__name__)
 
 # Modern color scheme inspired by popular IDEs and tools
 COLORS = {
-    'background': '#1a1f2e',     # Richer dark blue background
-    'sidebar': '#212739',        # Lighter blue-gray
-    'text': '#c4d0ff',          # Bright blue-white
-    'text_muted': '#8b9ccc',    # Soft periwinkle
-    'accent': '#7aa2f7',        # Vibrant blue
-    'accent_secondary': '#bb9af7',  # Soft purple
-    'border': '#151926',        # Darker border
-    'hover': '#3b4366',         # Rich navy hover
-    'selection': '#2d3452',     # Deep navy selection
-    'code_bg': '#2a304a',       # Navy code background
-    'link': '#7dcfff',          # Bright blue for links
-    'heading': '#c4d0ff',       # Bright white-blue for headings
-    'success': '#9ece6a',       # Soft green
-    'warning': '#e0af68',       # Soft orange
-    'error': '#f7768e',         # Soft red
-    'gradient_start': '#7aa2f7', # Start of gradients
-    'gradient_end': '#bb9af7',   # End of gradients
+    'background': '#0d1117',     # GitHub Dark theme background
+    'sidebar': '#161b22',        # Slightly lighter background for sidebar
+    'text': '#e6edf3',          # Bright text color
+    'text_muted': '#8b949e',    # Muted text for secondary information
+    'accent': '#58a6ff',        # Bright blue accent
+    'accent_secondary': '#bc8cff',  # Purple accent for variety
+    'border': '#30363d',        # Subtle border color
+    'hover': '#1f2937',         # Hover state background
+    'selection': '#2d3847',     # Selection background
+    'code_bg': '#1f2428',       # Code block background
+    'link': '#58a6ff',          # Link color
+    'heading': '#e6edf3',       # Heading color
+    'success': '#3fb950',       # Success green
+    'warning': '#d29922',       # Warning orange
+    'error': '#f85149',         # Error red
+    'gradient_start': '#58a6ff', # Start of gradients
+    'gradient_end': '#bc8cff',   # End of gradients
+    'accent-hover': '#75a9ff',   # Hover state for accent button
+    'accent-pressed': '#3f86e0', # Pressed state for accent button
+    'background-light': '#242933', # Light background for search box
+    'background-lighter': '#2d333e', # Even lighter background for search box
+    'text-light': '#94a0b4',    # Light text color for search box
 }
 
 class WorkerSignals(QObject):
@@ -282,26 +286,23 @@ class LoadingLabel(QLabel):
         self.timer.stop()
 
 class ModernButton(QPushButton):
-    def __init__(self, text, parent=None, icon=None):
+    def __init__(self, text="", parent=None):
         super().__init__(text, parent)
-        if icon:
-            self.setIcon(icon)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setStyleSheet(f"""
-            ModernButton {{
+            QPushButton {{
                 background-color: {COLORS['accent']};
-                color: {COLORS['background']};
+                color: {COLORS['text']};
                 border: none;
                 border-radius: 4px;
                 padding: 8px 16px;
-                font-family: 'Inter';
-                font-weight: 600;
-                font-size: 13px;
+                font-size: 14px;
             }}
-            ModernButton:hover {{
-                background-color: {COLORS['accent_secondary']};
+            QPushButton:hover {{
+                background-color: {COLORS['accent-hover']};
             }}
-            ModernButton:pressed {{
-                background-color: {COLORS['selection']};
+            QPushButton:pressed {{
+                background-color: {COLORS['accent-pressed']};
             }}
         """)
 
@@ -332,6 +333,10 @@ class MainWindow(QMainWindow):
         self.threadpool = QThreadPool()
         logger.debug(f"Multithreading with maximum {self.threadpool.maxThreadCount()} threads")
         
+        # Initialize state
+        self.sources_loaded = False
+        self.loading_complete_count = 0
+        
         # Load settings
         self.font_sizes = settings_manager.get_font_sizes()
         
@@ -347,10 +352,10 @@ class MainWindow(QMainWindow):
         self.cheatsh_source = CheatShSource()
         self.devhints_source = DevhintsSource()
         
-        # Set window icon
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "icons", "logo-64.png")
-        if os.path.exists(icon_path):
-            app_icon = QIcon(icon_path)
+        # Set window icon and logo path
+        self.logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "icons", "logo-64.png")
+        if os.path.exists(self.logo_path):
+            app_icon = QIcon(self.logo_path)
             self.setWindowIcon(app_icon)
             if sys.platform == 'win32':
                 import ctypes
@@ -421,7 +426,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(800, 600)
         
         # Set application-wide font
-        app_font = QFont("Inter", self.font_sizes["content"])  # Use loaded font size
+        app_font = QFont("Inter", self.font_sizes["content"])
         QApplication.setFont(app_font)
         
         # Create central widget
@@ -433,83 +438,6 @@ class MainWindow(QMainWindow):
 
         # Create modern toolbar
         self.create_toolbar()
-
-        # Create search section
-        search_container = QWidget()
-        search_container.setFixedHeight(48)
-        search_container.setStyleSheet(f"""
-            QWidget {{
-                background-color: {COLORS['sidebar']};
-                border-bottom: 1px solid {COLORS['border']};
-            }}
-        """)
-        search_layout = QHBoxLayout(search_container)
-        search_layout.setContentsMargins(8, 4, 8, 4)
-
-        # Create search box with clear button
-        search_wrapper = QWidget()
-        search_wrapper.setStyleSheet("""
-            QWidget {
-                background: transparent;
-            }
-        """)
-        search_wrapper_layout = QHBoxLayout(search_wrapper)
-        search_wrapper_layout.setContentsMargins(0, 0, 0, 0)
-        search_wrapper_layout.setSpacing(0)
-
-        # Add clear button first (on the left)
-        self.clear_button = QPushButton("⨉")  # Using mathematical x symbol
-        self.clear_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.clear_button.setFixedSize(22, 22)
-        self.clear_button.clicked.connect(self.clear_search)
-        self.clear_button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                color: {COLORS['text_muted']};
-                border: none;
-                border-radius: 3px;
-                font-family: 'Inter';
-                font-size: {self.font_sizes["search"]}pt;
-                font-weight: normal;
-                margin: 5px 6px 5px 0px;
-                padding: 0;
-                text-align: center;
-                line-height: 22px;
-            }}
-            QPushButton:hover {{
-                background-color: {COLORS['hover']};
-                color: {COLORS['text']};
-            }}
-            QPushButton:pressed {{
-                background-color: {COLORS['selection']};
-                color: {COLORS['accent']};
-            }}
-        """)
-        self.clear_button.hide()
-
-        self.search_box = SearchBox()
-        self.search_box.setFixedHeight(32)
-        self.search_box.setPlaceholderText("Search commands (e.g., 'git commit', 'python list')...")
-        self.search_box.textChanged.connect(self.on_search)
-        self.search_box.setStyleSheet(f"""
-            SearchBox {{
-                background-color: {COLORS['background']};
-                color: {COLORS['text']};
-                border: 1px solid {COLORS['border']};
-                border-radius: 4px;
-                padding: 4px 8px;
-                font-family: 'Inter';
-                font-size: {self.font_sizes["search"]}pt;
-            }}
-            SearchBox:focus {{
-                border: 1px solid {COLORS['accent']};
-            }}
-        """)
-
-        search_wrapper_layout.addWidget(self.clear_button)
-        search_wrapper_layout.addWidget(self.search_box)
-        search_layout.addWidget(search_wrapper)
-        layout.addWidget(search_container)
 
         # Create main splitter
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -525,10 +453,12 @@ class MainWindow(QMainWindow):
 
         # Create sidebar
         sidebar = QWidget()
-        sidebar.setMinimumWidth(250)
+        sidebar.setMinimumWidth(280)
+        sidebar.setMaximumWidth(320)
         sidebar.setStyleSheet(f"""
             QWidget {{
                 background-color: {COLORS['sidebar']};
+                border-right: 1px solid {COLORS['border']};
             }}
         """)
         sidebar_layout = QVBoxLayout(sidebar)
@@ -544,9 +474,12 @@ class MainWindow(QMainWindow):
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
         self.tree.setAnimated(True)
-        self.tree.setIndentation(12)
+        self.tree.setIndentation(16)
         self.tree.setItemsExpandable(True)
         self.tree.setExpandsOnDoubleClick(True)
+        self.tree.setVerticalScrollMode(QTreeWidget.ScrollMode.ScrollPerPixel)
+        self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.tree.setFrameShape(QFrame.Shape.NoFrame)
         self.tree.itemClicked.connect(self.on_item_clicked)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_tree_context_menu)
@@ -556,18 +489,20 @@ class MainWindow(QMainWindow):
                 border: none;
                 font-family: 'Inter';
                 font-size: {self.font_sizes["source_list"]}pt;
+                padding: 8px 4px;
             }}
             QTreeWidget::item {{
                 color: {COLORS['text']};
-                padding: 2px 4px;
-                margin: 0px;
+                padding: 8px;
+                margin: 2px 4px;
+                border-radius: 6px;
             }}
             QTreeWidget::item:hover {{
                 background-color: {COLORS['hover']};
             }}
             QTreeWidget::item:selected {{
                 background-color: {COLORS['selection']};
-                color: {COLORS['heading']};
+                color: {COLORS['accent']};
             }}
             QTreeWidget::branch {{
                 background: transparent;
@@ -575,55 +510,34 @@ class MainWindow(QMainWindow):
             }}
             QTreeWidget::branch:has-children:!has-siblings:closed,
             QTreeWidget::branch:closed:has-children:has-siblings {{
-                image: none;
+                image: url(assets/icons/chevron-right.png);
             }}
             QTreeWidget::branch:open:has-children:!has-siblings,
             QTreeWidget::branch:open:has-children:has-siblings {{
-                image: none;
+                image: url(assets/icons/chevron-down.png);
             }}
             QScrollBar:vertical {{
-                background-color: {COLORS['background']};
-                width: 8px;
+                background-color: transparent;
+                width: 16px;
                 margin: 0px;
-                border-radius: 4px;
             }}
             QScrollBar::handle:vertical {{
                 background-color: {COLORS['border']};
                 min-height: 30px;
-                border-radius: 4px;
+                border-radius: 7px;
+                margin: 2px 4px 2px 4px;
             }}
             QScrollBar::handle:vertical:hover {{
                 background-color: {COLORS['accent']};
             }}
             QScrollBar::add-line:vertical,
-            QScrollBar::sub-line:vertical,
+            QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
             QScrollBar::add-page:vertical,
             QScrollBar::sub-page:vertical {{
+                background: none;
                 height: 0px;
-                background: none;
-                border: none;
-            }}
-            QScrollBar:horizontal {{
-                background-color: {COLORS['background']};
-                height: 8px;
-                margin: 0px;
-                border-radius: 4px;
-            }}
-            QScrollBar::handle:horizontal {{
-                background-color: {COLORS['border']};
-                min-width: 30px;
-                border-radius: 4px;
-            }}
-            QScrollBar::handle:horizontal:hover {{
-                background-color: {COLORS['accent']};
-            }}
-            QScrollBar::add-line:horizontal,
-            QScrollBar::sub-line:horizontal,
-            QScrollBar::add-page:horizontal,
-            QScrollBar::sub-page:horizontal {{
-                width: 0px;
-                background: none;
-                border: none;
             }}
         """)
         sidebar_layout.addWidget(self.tree)
@@ -677,16 +591,8 @@ class MainWindow(QMainWindow):
         content_layout.setSpacing(8)  # Reduced spacing between elements
 
         # Add title
-        self.content_title = QLabel("")  # Start with empty title
-        self.content_title.setStyleSheet(f"""
-            QLabel {{
-                color: {COLORS['heading']};
-                font-family: 'Inter';
-                font-size: {self.font_sizes["title"]}pt;
-                font-weight: bold;
-                padding: 8px 0;  # Add padding to the title itself
-            }}
-        """)
+        self.content_title = QLabel("")
+        self.content_title.setStyleSheet("QLabel { color: " + COLORS['text'] + "; font-family: Inter; font-size: 14px; font-weight: bold; }")
         content_layout.addWidget(self.content_title)
         
         # Add content display
@@ -721,147 +627,202 @@ class MainWindow(QMainWindow):
         """Create a premium modern toolbar."""
         toolbar = QToolBar()
         toolbar.setMovable(False)
-        toolbar.setFixedHeight(44)
-        
-        # Create main container
+        toolbar.setFixedHeight(48)
+         
+        # Create main container with gradient background
         container = QWidget()
-        container.setFixedHeight(44)
+        container.setFixedHeight(48)
         container.setStyleSheet(f"""
             QWidget {{
                 background-color: {COLORS['background']};
                 border-bottom: 1px solid {COLORS['border']};
             }}
         """)
-        
+         
         layout = QHBoxLayout(container)
-        layout.setContentsMargins(8, 0, 8, 0)
-        layout.setSpacing(4)
+        layout.setContentsMargins(16, 0, 16, 0)
+        layout.setSpacing(8)
+         
+        # Create logo section
+        logo_container = QWidget()
+        logo_layout = QHBoxLayout(logo_container)
+        logo_layout.setContentsMargins(0, 0, 0, 0)
+        logo_layout.setSpacing(8)
+
+        # Add app icon/logo
+        logo_label = QLabel()
+        logo_pixmap = QPixmap(self.logo_path)
+        logo_label.setPixmap(logo_pixmap.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        logo_label.setStyleSheet("QLabel { padding: 0; background: transparent; }")
+        logo_layout.addWidget(logo_label)
+
+        # Add app name
+        app_name = QLabel("PyDevCheat")
+        app_name.setStyleSheet(f"""
+            QLabel {{
+                color: {COLORS['text']};
+                font-family: 'Inter';
+                font-size: 16px;
+                font-weight: bold;
+                background: transparent;
+            }}
+        """)
+        logo_layout.addWidget(app_name)
+        layout.addWidget(logo_container)
+
+        # Create button container with subtle background
+        button_container = QWidget()
+        button_container.setStyleSheet(f"""
+            QWidget {{
+                background-color: {COLORS['sidebar']};
+                border-radius: 8px;
+                padding: 4px;
+            }}
+        """)
+        button_layout = QHBoxLayout(button_container)
+        button_layout.setContentsMargins(4, 0, 4, 0)
+        button_layout.setSpacing(4)
         
-        class ColorAnimatedButton(QPushButton):
-            def __init__(self, text, tooltip, parent=None):
-                super().__init__(text, parent)
-                self.setFixedSize(34, 34)
+        # Create and add buttons with modern icons
+        class ModernToolButton(QPushButton):
+            def __init__(self, icon, tooltip, parent=None):
+                super().__init__(parent)
+                self.setFixedSize(32, 32)
+                self.setText(icon)
                 self.setToolTip(tooltip)
-                self.setCursor(Qt.CursorShape.PointingHandCursor)
-                
-                # Create color animations
-                self._color_animation = QPropertyAnimation(self, b"color", self)
-                self._bg_animation = QPropertyAnimation(self, b"bgColor", self)
-                self._bg_animation.setDuration(150)
-                
-                # Store colors as properties
-                self._current_color = QColor(COLORS['text_muted'])
-                self._current_bg_color = QColor(COLORS['code_bg'])
-                
                 self.setStyleSheet(f"""
                     QPushButton {{
-                        background-color: {COLORS['code_bg']};
+                        background-color: transparent;
                         color: {COLORS['text_muted']};
                         border: none;
-                        border-radius: 5px;
-                        font-family: 'Inter';
-                        font-weight: 600;
-                        font-size: 15px;
+                        border-radius: 6px;
+                        font-size: 18px;  /* Increased font size */
+                        padding: 0;
+                        font-family: 'Segoe UI Symbol', 'Apple Symbols', sans-serif;  /* Better icon fonts */
+                    }}
+                    QPushButton:hover {{
+                        background-color: {COLORS['hover']};
+                        color: {COLORS['text']};
+                    }}
+                    QPushButton:pressed {{
+                        background-color: {COLORS['selection']};
+                        color: {COLORS['accent']};
                     }}
                 """)
+        
+        # Add left side buttons
+        home_btn = ModernToolButton("⌂", "Home (Welcome Screen)")
+        home_btn.clicked.connect(self.show_home_screen)
+        button_layout.addWidget(home_btn)
+        
+        refresh_btn = ModernToolButton("↻", "Refresh (Reload Commands)")
+        refresh_btn.clicked.connect(self.load_sources)
+        button_layout.addWidget(refresh_btn)
+        
+        sync_btn = ModernToolButton("⟳", "Sync (Update Sources)")
+        sync_btn.clicked.connect(self.sync_all_sources)
+        button_layout.addWidget(sync_btn)
 
-            def enterEvent(self, event):
-                self._animate_colors(QColor(COLORS['accent']), QColor(COLORS['hover']))
-                super().enterEvent(event)
+        copy_btn = ModernToolButton("⎘", "Copy (Ctrl+C)")
+        copy_btn.clicked.connect(self.copy_content)
+        button_layout.addWidget(copy_btn)
+        
+        # Add the button container to main layout
+        layout.addWidget(button_container)
 
-            def leaveEvent(self, event):
-                self._animate_colors(QColor(COLORS['text_muted']), QColor(COLORS['code_bg']))
-                super().leaveEvent(event)
+        # Add stretching space before search
+        layout.addStretch()
 
-            def mousePressEvent(self, event):
-                self._animate_colors(QColor(COLORS['accent']), QColor(COLORS['selection']))
-                super().mousePressEvent(event)
+        # Add search box in the middle
+        search_container = QWidget()
+        search_container.setFixedWidth(400)  # Increased width
+        search_layout = QHBoxLayout(search_container)
+        search_layout.setContentsMargins(0, 0, 0, 0)
+        search_layout.setSpacing(0)
 
-            def mouseReleaseEvent(self, event):
-                self._animate_colors(QColor(COLORS['accent']), QColor(COLORS['hover']))
-                super().mouseReleaseEvent(event)
-
-            def _animate_colors(self, text_color, bg_color):
-                self._color_animation.stop()
-                self._bg_animation.stop()
-                
-                self._color_animation.setStartValue(self._current_color)
-                self._color_animation.setEndValue(text_color)
-                
-                self._bg_animation.setStartValue(self._current_bg_color)
-                self._bg_animation.setEndValue(bg_color)
-                
-                self._current_color = text_color
-                self._current_bg_color = bg_color
-                
-                self._color_animation.start()
-                self._bg_animation.start()
-
-            def _set_color(self, color):
-                self._update_style(text_color=color)
-
-            def _set_bg_color(self, color):
-                self._update_style(bg_color=color)
-
-            def _update_style(self, text_color=None, bg_color=None):
-                if text_color:
-                    self._current_color = text_color
-                if bg_color:
-                    self._current_bg_color = bg_color
-                
-                self.setStyleSheet(f"""
-                    QPushButton {{
-                        background-color: {self._current_bg_color.name()};
-                        color: {self._current_color.name()};
-                        border: none;
-                        border-radius: 5px;
-                        font-family: 'Inter';
-                        font-weight: 600;
-                        font-size: 15px;
-                    }}
-                """)
-
-            color = pyqtProperty(QColor, fset=_set_color)
-            bgColor = pyqtProperty(QColor, fset=_set_bg_color)
-
-        # Create button group container
-        button_group = QWidget()
-        button_group.setStyleSheet(f"""
+        search_wrapper = QWidget()
+        search_wrapper.setStyleSheet(f"""
             QWidget {{
                 background-color: {COLORS['sidebar']};
                 border-radius: 6px;
-                padding: 3px;
             }}
         """)
-        group_layout = QHBoxLayout(button_group)
-        group_layout.setContentsMargins(0, 0, 0, 0)
-        group_layout.setSpacing(2)
-        
-        # Create and add buttons with modern icons
-        home_btn = ColorAnimatedButton("⌂", "Go to Welcome Screen (Home)")
-        home_btn.clicked.connect(self.show_home_screen)
-        group_layout.addWidget(home_btn)
-        
-        refresh_btn = ColorAnimatedButton("⟳", "Reload All Commands (Refresh)")
-        refresh_btn.clicked.connect(self.load_sources)
-        group_layout.addWidget(refresh_btn)
-        
-        sync_btn = ColorAnimatedButton("↻", "Synchronize All Sources (Sync)")
-        sync_btn.clicked.connect(self.sync_all_sources)
-        group_layout.addWidget(sync_btn)
+        search_wrapper_layout = QHBoxLayout(search_wrapper)
+        search_wrapper_layout.setContentsMargins(12, 6, 12, 6)  # Increased padding
+        search_wrapper_layout.setSpacing(8)  # Increased spacing
 
-        copy_btn = ColorAnimatedButton("⎘", "Copy Content (Ctrl+C)")
-        copy_btn.clicked.connect(self.copy_content)
-        group_layout.addWidget(copy_btn)
+        self.search_icon = QLabel("🔍")
+        self.search_icon.setStyleSheet(f"""
+            QLabel {{
+                color: {COLORS['text_muted']};
+                font-size: 16px;
+                background: transparent;
+            }}
+            QLabel:hover {{
+                color: {COLORS['text']};
+            }}
+        """)
+        self.search_icon.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.search_icon.mousePressEvent = self.clear_search
+        search_wrapper_layout.addWidget(self.search_icon)
 
-        # Add settings button with updated icon and style
-        settings_btn = ColorAnimatedButton("⚿", "Settings")  # Changed to ⚿ for better style consistency
-        settings_btn.clicked.connect(self.show_settings)
-        group_layout.addWidget(settings_btn)
-        
-        # Add the button group to main layout
-        layout.addWidget(button_group)
+        self.search_box = QLineEdit()
+        self.search_box.setPlaceholderText("Search commands...")
+        self.search_box.textChanged.connect(self.on_search)
+        self.search_box.setStyleSheet(f"""
+            QLineEdit {{
+                background: transparent;
+                border: none;
+                color: {COLORS['text']};
+                font-family: 'Inter';
+                font-size: 14px;
+                padding: 4px;
+                min-width: 300px;  /* Ensure minimum width */
+            }}
+            QLineEdit::placeholder {{
+                color: {COLORS['text_muted']};
+            }}
+        """)
+        search_wrapper_layout.addWidget(self.search_box)
+
+        search_layout.addWidget(search_wrapper)
+        layout.addWidget(search_container)
+
+        # Add stretching space after search
         layout.addStretch()
+
+        # Create right-side button container
+        right_button_container = QWidget()
+        right_button_container.setStyleSheet(f"""
+            QWidget {{
+                background-color: {COLORS['sidebar']};
+                border-radius: 8px;
+                padding: 4px;
+            }}
+        """)
+        right_button_layout = QHBoxLayout(right_button_container)
+        right_button_layout.setContentsMargins(4, 0, 4, 0)
+        right_button_layout.setSpacing(4)
+
+        settings_btn = ModernToolButton("⚙", "Settings")
+        settings_btn.clicked.connect(self.show_settings)
+        right_button_layout.addWidget(settings_btn)
+        
+        # Add the right button container to main layout
+        layout.addWidget(right_button_container)
+        
+        # Add version label
+        version_label = QLabel("v1.0.0")
+        version_label.setStyleSheet(f"""
+            QLabel {{
+                color: {COLORS['text_muted']};
+                font-family: 'Inter';
+                font-size: 12px;
+                background: transparent;
+                margin-left: 8px;
+            }}
+        """)
+        layout.addWidget(version_label)
         
         # Set the container as the toolbar widget
         toolbar.setStyleSheet("""
@@ -876,89 +837,190 @@ class MainWindow(QMainWindow):
 
     def show_home_screen(self):
         """Show the home screen with welcome message."""
-        self.content_title.setText("PyDevCheat")
-        self.content.clear()
-
-        # Get current counts
-        tldr_count = self.tldr_root.childCount()
-        cheatsh_count = self.cheatsh_root.childCount()
-        devhints_count = self.devhints_root.childCount()
-        total_commands = tldr_count + cheatsh_count + devhints_count
-
-        welcome_content = f"""
-        <html>
-        <body style="font-family: 'Inter'; line-height: 1.6; margin: 0; padding: 20px;">
-            <h1 style="color: {COLORS['accent']}; font-size: 24px; margin: 0 0 10px 0;">⚡ Command-Line Supercharger</h1>
-            <p style="color: {COLORS['text']}; font-size: 14px; margin: 0 0 30px 0;">Instant access to developer knowledge at your fingertips.</p>
-
-            <div style="margin-bottom: 30px;">
-                <div style="background: {COLORS['code_bg']}; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                    <h3 style="color: {COLORS['accent_secondary']}; margin: 0 0 15px 0;">🔍 Quick Search</h3>
-                    <p style="color: {COLORS['text_muted']}; margin: 0;">Press <span style="background: {COLORS['background']}; padding: 2px 6px; border-radius: 4px;">Ctrl/Cmd + F</span> and type<br>Example: <code style="background: {COLORS['background']}; padding: 2px 6px; border-radius: 4px;">git commit</code></p>
-                </div>
-
-                <div style="background: {COLORS['code_bg']}; padding: 20px; border-radius: 8px;">
-                    <h3 style="color: {COLORS['accent_secondary']}; margin: 0 0 15px 0;">📚 Browse Sources</h3>
-                    <p style="color: {COLORS['text_muted']}; margin: 0;">
-                        • TLDR Pages ({tldr_count:,})<br>
-                        • Cheat.sh ({cheatsh_count:,})<br>
-                        • DevHints ({devhints_count:,})
-                    </p>
+        self.content_title.setText("Welcome to PyDevCheat")
+        
+        # Get command counts
+        counts = self.get_total_commands()
+        is_loading = counts['status'] == 'loading'
+        count_data = counts['counts']
+        
+        # Create welcome screen HTML with modern styling
+        welcome_html = f"""<html><style>
+            body {{
+                color: {COLORS['text']};
+                font-family: 'Inter', sans-serif;
+                line-height: 1.6;
+                padding: 16px 24px;
+                margin: 0;
+                background: {COLORS['background']};
+            }}
+            .section {{
+                background: {COLORS['sidebar']};
+                border-radius: 8px;
+                padding: 16px;
+                margin-bottom: 16px;
+            }}
+            .section-title {{
+                color: {COLORS['accent']};
+                font-size: 16px;
+                font-weight: 600;
+                margin-bottom: 12px;
+                display: flex;
+                align-items: center;
+                white-space: nowrap;
+            }}
+            .section-title .emoji {{
+                margin-right: 8px;
+                font-size: 18px;
+            }}
+            .content {{
+                margin-left: 24px;
+            }}
+            .stats-table {{
+                width: 100%;
+                border-collapse: separate;
+                border-spacing: 0;
+                margin: 12px 0;
+                background: {COLORS['background']};
+                border-radius: 6px;
+                overflow: hidden;
+            }}
+            .stats-table td {{
+                padding: 10px 12px;
+                border-bottom: 1px solid {COLORS['border']};
+            }}
+            .stats-table tr:last-child td {{
+                border-bottom: none;
+            }}
+            .stats-table .source {{
+                color: {COLORS['text']};
+                font-weight: 500;
+                white-space: nowrap;
+            }}
+            .stats-table .count {{
+                color: {COLORS['accent']};
+                font-family: 'JetBrains Mono', monospace;
+                text-align: right;
+                padding: 4px 8px;
+                background: {COLORS['code_bg']};
+                border-radius: 4px;
+                min-width: 60px;
+                display: inline-block;
+            }}
+            .stats-table .description {{
+                color: {COLORS['text_muted']};
+                padding-left: 16px;
+                width: 100%;
+            }}
+            .stats-table .total-row {{
+                font-weight: bold;
+                background: {COLORS['code_bg']};
+            }}
+            .stats-table .total-row .count {{
+                color: {COLORS['accent_secondary']};
+                background: {COLORS['selection']};
+            }}
+            .stats-table .loading {{
+                color: {COLORS['text_muted']};
+                font-style: italic;
+            }}
+            ul {{
+                list-style: none;
+                padding: 0;
+                margin: 0;
+            }}
+            li {{
+                margin: 6px 0;
+                padding-left: 16px;
+                position: relative;
+                line-height: 1.5;
+            }}
+            li::before {{
+                content: "•";
+                color: {COLORS['accent']};
+                position: absolute;
+                left: 0;
+            }}
+            .code {{
+                color: {COLORS['accent']};
+                background: {COLORS['code_bg']};
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.9em;
+                white-space: nowrap;
+            }}
+            .indent {{
+                margin-left: 16px;
+                color: {COLORS['text_muted']};
+                font-size: 0.95em;
+            }}
+        </style>
+        <body>
+            <div class="section">
+                <div class="section-title"><span class="emoji">📊</span> Command Sources</div>
+                <div class="content">
+                    <table class="stats-table">
+                        <tr>
+                            <td class="source">TLDR Pages</td>
+                            <td class="count">{count_data['tldr']}</td>
+                            <td class="description">Simplified and practical command examples</td>
+                        </tr>
+                        <tr>
+                            <td class="source">Cheat.sh</td>
+                            <td class="count">{count_data['cheatsh']}</td>
+                            <td class="description">Community-driven cheat sheets and snippets</td>
+                        </tr>
+                        <tr>
+                            <td class="source">DevHints</td>
+                            <td class="count">{count_data['devhints']}</td>
+                            <td class="description">Quick reference guides for developers</td>
+                        </tr>
+                        <tr class="total-row">
+                            <td class="source">Total Commands</td>
+                            <td class="count">{count_data['total']}</td>
+                            <td class="description">{'Loading sources...' if is_loading else 'Ready to use'}</td>
+                        </tr>
+                    </table>
                 </div>
             </div>
 
-            <div style="background: {COLORS['code_bg']}; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
-                <h3 style="color: {COLORS['link']}; margin: 0 0 15px 0;">⌨️ Keyboard Shortcuts</h3>
-                <table style="color: {COLORS['text_muted']}; border-spacing: 10px;">
-                    <tr>
-                        <td><span style="background: {COLORS['background']}; padding: 2px 6px; border-radius: 4px;">Ctrl/Cmd + F</span></td>
-                        <td>Focus Search</td>
-                    </tr>
-                    <tr>
-                        <td><span style="background: {COLORS['background']}; padding: 2px 6px; border-radius: 4px;">Esc</span></td>
-                        <td>Clear Search</td>
-                    </tr>
-                    <tr>
-                        <td><span style="background: {COLORS['background']}; padding: 2px 6px; border-radius: 4px;">↑/↓</span></td>
-                        <td>Navigate Results</td>
-                    </tr>
-                    <tr>
-                        <td><span style="background: {COLORS['background']}; padding: 2px 6px; border-radius: 4px;">Ctrl/Cmd + C</span></td>
-                        <td>Copy Content</td>
-                    </tr>
-                </table>
-            </div>
-
-            <div style="margin-bottom: 30px;">
-                <div style="background: {COLORS['code_bg']}; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                    <h3 style="color: {COLORS['success']}; margin: 0 0 15px 0;">💡 Pro Tips</h3>
-                    <ul style="color: {COLORS['text_muted']}; list-style-type: none; padding: 0; margin: 0;">
-                        <li style="margin-bottom: 5px;">• Use specific search terms</li>
-                        <li style="margin-bottom: 5px;">• Right-click for context menu</li>
-                        <li>• Select text to copy parts</li>
+            <div class="section">
+                <div class="section-title"><span class="emoji">🚀</span> Quick Start</div>
+                <div class="content">
+                    <ul>
+                        <li>Type in the search box above to find commands<div class="indent">Example: <span class="code">git commit</span> or <span class="code">docker run</span></div></li>
+                        <li>Browse categories in the sidebar</li>
+                        <li>Right-click items to expand/collapse sections</li>
                     </ul>
                 </div>
+            </div>
 
-                <div style="background: {COLORS['code_bg']}; padding: 20px; border-radius: 8px;">
-                    <h3 style="color: {COLORS['success']}; margin: 0 0 15px 0;">🚀 Quick Links</h3>
-                    <ul style="color: {COLORS['text_muted']}; list-style-type: none; padding: 0; margin: 0;">
-                        <li style="margin-bottom: 5px;">• <a href="https://github.com/tldr-pages/tldr" style="color: {COLORS['link']}; text-decoration: none;">TLDR Pages</a></li>
-                        <li style="margin-bottom: 5px;">• <a href="https://cheat.sh/" style="color: {COLORS['link']}; text-decoration: none;">Cheat.sh</a></li>
-                        <li>• <a href="https://devhints.io/" style="color: {COLORS['link']}; text-decoration: none;">DevHints.io</a></li>
+            <div class="section">
+                <div class="section-title"><span class="emoji">💡</span> Pro Tips</div>
+                <div class="content">
+                    <ul>
+                        <li>Use specific terms for better results<div class="indent">Example: <span class="code">python list comprehension</span></div></li>
+                        <li>Press Enter to search across all sources</li>
+                        <li>Click any command for detailed usage</li>
                     </ul>
                 </div>
             </div>
 
-            <div style="text-align: center; margin-top: 30px; color: {COLORS['accent']}; font-size: 12px;">
-                {total_commands:,} commands ready • Built with ♥ for developers
+            <div class="section">
+                <div class="section-title"><span class="emoji">⌨️</span> Shortcuts</div>
+                <div class="content">
+                    <ul>
+                        <li><span class="code">Ctrl/Cmd + F</span>: Focus search</li>
+                        <li><span class="code">Esc</span>: Clear search</li>
+                        <li><span class="code">Up/Down</span>: Navigate results</li>
+                    </ul>
+                </div>
             </div>
-        </body>
-        </html>
-        """
-
-        # Set HTML content
-        self.content.setHtml(welcome_content)
-        self.statusBar().showMessage("Ready")
+        </body></html>"""
+        
+        self.content.setHtml(welcome_html)
+        self.statusBar().showMessage("Ready" if not is_loading else "Loading sources...")
 
     def load_sources(self):
         """Load command sources in background threads."""
@@ -966,6 +1028,7 @@ class MainWindow(QMainWindow):
         
         # Reset loading state
         self.sources_loaded = False
+        self.loading_complete_count = 0
         self.progress.setVisible(True)
         self.progress.setRange(0, 0)
         self.statusBar().showMessage("Loading sources...")
@@ -974,6 +1037,11 @@ class MainWindow(QMainWindow):
         self.tldr_root.takeChildren()
         self.cheatsh_root.takeChildren()
         self.devhints_root.takeChildren()
+
+        # Reset counts
+        self.update_root_item_count(self.tldr_root, 0)
+        self.update_root_item_count(self.cheatsh_root, 0)
+        self.update_root_item_count(self.devhints_root, 0)
 
         # Start workers
         worker = Worker(self.load_tldr_commands)
@@ -1053,9 +1121,6 @@ class MainWindow(QMainWindow):
             # Stop loading animation and remove loading item
             self.cleanup_loading_widget("TLDR Pages")
             
-            # Update root text with count
-            self.update_root_item_count(self.tldr_root, len(commands))
-            
             # Create a flat list of all commands with their platforms
             command_list = []
             for command, platforms in commands.items():
@@ -1074,9 +1139,12 @@ class MainWindow(QMainWindow):
                 cmd_item.setText(0, command)
                 cmd_item.setToolTip(0, f"Platforms: {platforms}")
             
+            # Update root text with count
+            self.update_root_item_count(self.tldr_root, len(command_list))
+            
             self.tldr_root.setExpanded(True)
+            self.loading_complete_count += 1
             self.check_loading_complete()
-            self.update_status_message()
             
         except Exception as e:
             logger.error(f"Error processing TLDR commands: {e}")
@@ -1096,9 +1164,6 @@ class MainWindow(QMainWindow):
             else:
                 topic_list = list(topics)
             
-            # Update root text with count
-            self.update_root_item_count(self.cheatsh_root, len(topic_list))
-            
             # Sort topics alphabetically
             topic_list.sort(key=str.lower)
             
@@ -1107,9 +1172,12 @@ class MainWindow(QMainWindow):
                 topic_item = QTreeWidgetItem(self.cheatsh_root)
                 topic_item.setText(0, topic)
             
+            # Update root text with count
+            self.update_root_item_count(self.cheatsh_root, len(topic_list))
+            
             self.cheatsh_root.setExpanded(True)
+            self.loading_complete_count += 1
             self.check_loading_complete()
-            self.update_status_message()
             
         except Exception as e:
             logger.error(f"Error processing Cheat.sh topics: {e}")
@@ -1129,9 +1197,6 @@ class MainWindow(QMainWindow):
             else:
                 topic_list = [(topic, topic) for topic in topics]
             
-            # Update root text with count
-            self.update_root_item_count(self.devhints_root, len(topic_list))
-            
             # Sort topics alphabetically
             topic_list.sort(key=lambda x: x[0].lower())
             
@@ -1141,7 +1206,14 @@ class MainWindow(QMainWindow):
                 topic_item.setText(0, display_topic)
                 topic_item.setData(0, Qt.ItemDataRole.UserRole, original_topic)
             
+            # Update root text with count
+            self.update_root_item_count(self.devhints_root, len(topic_list))
+            
+            # Stop loading animation and remove loading item
+            self.cleanup_loading_widget("DevHints")
+            
             self.devhints_root.setExpanded(True)
+            self.loading_complete_count += 1
             self.check_loading_complete()
             
         except Exception as e:
@@ -1150,23 +1222,29 @@ class MainWindow(QMainWindow):
 
     def check_loading_complete(self):
         """Check if all sources are loaded."""
-        all_loaded = True
-        total_items = 0
-        
-        # Count items and check loading state
-        for root in [self.tldr_root, self.cheatsh_root, self.devhints_root]:
-            count = root.childCount()
-            if count == 0 and not root.text(0).endswith("(0)") and not "Error" in root.text(0):
-                all_loaded = False
-            total_items += count
-        
-        if all_loaded:
-            self.progress.setVisible(False)
-            self.sources_loaded = True
-            if total_items > 0:
-                self.statusBar().showMessage(f"Ready - {total_items:,} commands available")
-            else:
-                self.statusBar().showMessage("No commands loaded. Try syncing sources.")
+        try:
+            # Get counts for each source
+            tldr_count = self.count_items(self.tldr_root)
+            cheatsh_count = self.count_items(self.cheatsh_root)
+            devhints_count = self.count_items(self.devhints_root)
+            total = tldr_count + cheatsh_count + devhints_count
+
+            # Check if all three sources have completed loading
+            if self.loading_complete_count >= 3:
+                self.sources_loaded = True
+                self.progress.setVisible(False)
+                
+                if total > 0:
+                    self.statusBar().showMessage(f"Ready - {total:,} commands available")
+                else:
+                    self.statusBar().showMessage("No commands loaded. Try syncing sources.")
+                
+                # Update the welcome screen to reflect current counts
+                self.show_home_screen()
+            
+        except Exception as e:
+            logger.error(f"Error checking loading complete: {e}")
+            self.statusBar().showMessage("Error checking loading status")
 
     def on_load_error(self, error_info):
         """Handle loading errors."""
@@ -1187,11 +1265,28 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Error loading {source}")
         self.check_loading_complete()
 
+    def on_search_text_changed(self, text):
+        """Handle search text changes."""
+        # Update search icon
+        self.search_icon.setText("✕" if text else "🔍")
+        # Call the original search function
+        self.on_search(text)
+
     def on_search(self, text):
         """Filter tree items based on search text."""
         try:
-            # Show/hide clear button based on search text
-            self.clear_button.setVisible(bool(text))
+            # Update search icon
+            self.search_icon.setText("✕" if text else "🔍")
+            self.search_icon.setStyleSheet(f"""
+                QLabel {{
+                    color: {COLORS['text_muted' if not text else 'text']};
+                    font-size: 16px;
+                    background: transparent;
+                }}
+                QLabel:hover {{
+                    color: {COLORS['text']};
+                }}
+            """)
             
             text = text.lower()
             # Create variations of the search term
@@ -1261,12 +1356,23 @@ class MainWindow(QMainWindow):
             logger.error(f"Error in search: {e}")
             self.statusBar().showMessage(f"Search error: {str(e)}")
 
-    def clear_search(self):
+    def clear_search(self, event=None):
         """Clear the search box and reset tree view."""
-        self.search_box.clear()
-        self.clear_button.hide()
-        self.reset_tree_visibility()
-        self.update_status_message()
+        if self.search_box.text():  # Only clear if there's text
+            self.search_box.clear()
+            self.search_icon.setText("🔍")
+            self.search_icon.setStyleSheet(f"""
+                QLabel {{
+                    color: {COLORS['text_muted']};
+                    font-size: 16px;
+                    background: transparent;
+                }}
+                QLabel:hover {{
+                    color: {COLORS['text']};
+                }}
+            """)
+            self.reset_tree_visibility()
+            self.update_status_message()
 
     def update_status_message(self):
         """Update status bar with current state."""
@@ -1295,12 +1401,25 @@ class MainWindow(QMainWindow):
 
     def count_items(self, root_item):
         """Count non-root items under a root item."""
-        count = 0
-        for i in range(root_item.childCount()):
-            child = root_item.child(i)
-            if not isinstance(child, LoadingLabel):
-                count += 1
-        return count
+        try:
+            if not root_item:
+                return 0
+                
+            count = 0
+            for i in range(root_item.childCount()):
+                child = root_item.child(i)
+                # Skip loading widgets and hidden items
+                if not self.tree.itemWidget(child, 0) and not child.isHidden():
+                    # Only count leaf nodes (actual commands)
+                    if child.childCount() == 0:
+                        count += 1
+                    else:
+                        # For non-leaf nodes, recursively count their children
+                        count += self.count_items(child)
+            return count
+        except Exception as e:
+            logger.error(f"Error counting items: {e}")
+            return 0
 
     def on_item_clicked(self, item: QTreeWidgetItem, column: int):
         """Handle tree item click."""
@@ -1352,14 +1471,7 @@ class MainWindow(QMainWindow):
         title_layout.setContentsMargins(16, 0, 16, 0)
 
         self.content_title = QLabel("")
-        self.content_title.setStyleSheet(f"""
-            QLabel {{
-                color: {COLORS['text']};
-                font-family: Inter;
-                font-size: 14px;
-                font-weight: bold;
-            }}
-        """)
+        self.content_title.setStyleSheet("QLabel { color: " + COLORS['text'] + "; font-family: Inter; font-size: 14px; font-weight: bold; }")
         title_layout.addWidget(self.content_title)
         title_layout.addStretch()
 
@@ -1379,6 +1491,52 @@ class MainWindow(QMainWindow):
                 selection-background-color: {COLORS['selection']};
                 selection-color: {COLORS['text']};
                 padding: 0;
+            }}
+            QScrollBar:vertical {{
+                background-color: transparent;
+                width: 16px;
+                margin: 0px;
+            }}
+            QScrollBar::handle:vertical {{
+                background-color: {COLORS['border']};
+                min-height: 30px;
+                border-radius: 7px;
+                margin: 2px 4px 2px 4px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background-color: {COLORS['accent']};
+            }}
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {{
+                background: none;
+                height: 0px;
+            }}
+            QScrollBar:horizontal {{
+                background-color: transparent;
+                height: 16px;
+                margin: 0px;
+            }}
+            QScrollBar::handle:horizontal {{
+                background-color: {COLORS['border']};
+                min-width: 30px;
+                border-radius: 7px;
+                margin: 4px 2px 4px 2px;
+            }}
+            QScrollBar::handle:horizontal:hover {{
+                background-color: {COLORS['accent']};
+            }}
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal {{
+                width: 0px;
+            }}
+            QScrollBar::add-page:horizontal,
+            QScrollBar::sub-page:horizontal {{
+                background: none;
+                width: 0px;
             }}
         """)
 
@@ -1676,8 +1834,8 @@ class MainWindow(QMainWindow):
         if item:
             if item.parent() is None:
                 source_name = item.text(0).split(" (")[0]
-                expand_source = menu.addAction(f"▾ Expand {source_name}")
-                collapse_source = menu.addAction(f"▸ Collapse {source_name}")
+                expand_action = menu.addAction(f"▾ Expand {source_name}")
+                collapse_action = menu.addAction(f"▸ Collapse {source_name}")
                 menu.addSeparator()
         
         expand_all = menu.addAction("▾ Expand All")
@@ -1721,18 +1879,39 @@ class MainWindow(QMainWindow):
     def get_total_commands(self):
         """Get total number of commands available."""
         try:
-            total = 0
-            # Only count non-loading items
-            for root in [self.tldr_root, self.cheatsh_root, self.devhints_root]:
-                for i in range(root.childCount()):
-                    child = root.child(i)
-                    # Skip loading items
-                    if not self.tree.itemWidget(child, 0):
-                        total += 1
-            return f"{total:,}"  # Format with commas for readability
+            # Get counts for each source
+            tldr_count = self.count_items(self.tldr_root)
+            cheatsh_count = self.count_items(self.cheatsh_root)
+            devhints_count = self.count_items(self.devhints_root)
+            total = tldr_count + cheatsh_count + devhints_count
+
+            # Check if we're still loading
+            loading = not self.sources_loaded
+
+            # Format counts with commas
+            def format_count(count):
+                return f"{count:,}" if count > 0 else "0"
+
+            return {
+                'status': 'loading' if loading else 'ready',
+                'counts': {
+                    'tldr': format_count(tldr_count),
+                    'cheatsh': format_count(cheatsh_count),
+                    'devhints': format_count(devhints_count),
+                    'total': format_count(total)
+                }
+            }
         except Exception as e:
             logger.error(f"Error counting commands: {e}")
-            return "thousands of"  # Fallback if counting fails
+            return {
+                'status': 'error',
+                'counts': {
+                    'tldr': '0',
+                    'cheatsh': '0',
+                    'devhints': '0',
+                    'total': '0'
+                }
+            }
 
     def display_content(self, content: str):
         """Display the content in the text view."""
@@ -1752,6 +1931,19 @@ class MainWindow(QMainWindow):
             }}
         """)
         dialog.exec()
+
+    def expand_all(self):
+        """Expand all items in the tree."""
+        self.tree.expandAll()
+        self.statusBar().showMessage("Expanded all items", 2000)
+
+    def collapse_all(self):
+        """Collapse all items in the tree."""
+        self.tree.collapseAll()
+        # Keep root items expanded
+        for i in range(self.tree.topLevelItemCount()):
+            self.tree.topLevelItem(i).setExpanded(True)
+        self.statusBar().showMessage("Collapsed all items", 2000)
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
