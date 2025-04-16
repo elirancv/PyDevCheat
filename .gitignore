@@ -38,6 +38,19 @@ venv.bak/
 .pydevproject
 .settings/
 
+# Project specific
+*.log
+.cache/
+.cheat_cache/
+cheat_cache/
+*.db
+*.sqlite3
+
+# OS specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
 # Testing
 .coverage
 htmlcov/
@@ -54,19 +67,26 @@ coverage.xml
 *.rar
 *.7z
 
-# Logs
-*.log
-logs/
-log/
+# Documentation
+docs/_build/
+site/
 
-# Local development
-.DS_Store
-Thumbs.db
-.cache/
-.pytest_cache/
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# mypy
 .mypy_cache/
+.dmypy.json
+dmypy.json
 
-# Project specific
-.pydevcheat/
-cheats.json
-snippets.json 
+# Rope project settings
+.ropeproject
+
+# Environments
+.env
+.env.local
+.env.*.local
+
+# Project specific cache
+.cache/
+cheat_cache/ 

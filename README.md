@@ -1,202 +1,178 @@
-# 🧠 PyDevCheat - Your CLI Programming Companion
+# 🚀 PyDevCheat
 
-<div align="center">
+A powerful programming companion that combines a modern desktop application and CLI tool for instant access to commands, snippets, and cheat sheets. Built with Python and Qt, featuring both a sleek GUI and an efficient command-line interface.
 
-![PyDevCheat Demo](docs/images/demo.gif)
+![PyDevCheat Screenshot](docs/screenshot.png)
 
-[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Downloads](https://img.shields.io/pypi/dm/pydevcheat)](https://pypi.org/project/pydevcheat/)
-[![PyPI Version](https://img.shields.io/pypi/v/pydevcheat)](https://pypi.org/project/pydevcheat/)
+## ✨ Features
 
-A lightning-fast command-line tool to instantly access programming cheat sheets and command snippets.
+- 🖥️ **Dual Interface**:
+  - Modern desktop application with dark theme
+  - Fast command-line interface for terminal lovers
+- 🔍 **Instant Search**: Real-time filtering across multiple command sources
+- 📚 **Multiple Sources**:
+  - TLDR Pages (5,400+ commands)
+  - Cheat.sh (3,900+ snippets)
+  - DevHints (350+ reference guides)
+- 🎨 **Modern UI**:
+  - Sleek dark theme with carefully crafted color palette
+  - Responsive and fluid interface
+  - Professional IDE-style design
+- ⚡ **Performance**:
+  - Asynchronous loading of sources
+  - Efficient search filtering
+  - Smart caching system
+- 🛠️ **Developer Tools**:
+  - Command syntax highlighting
+  - Copy-to-clipboard functionality
+  - Source synchronization
+- ⌨️ **Keyboard Shortcuts**:
+  - `Ctrl/Cmd + F`: Focus search
+  - `Esc`: Clear search
+  - `Up/Down`: Navigate results
 
-[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [Examples](#-examples) • [Contributing](#-contributing)
+## 🔧 Installation
 
-</div>
-
-## 📸 Screenshots
-
-<div align="center">
-  <img src="docs/images/screenshot1.png" alt="Basic Search" width="45%">
-  <img src="docs/images/screenshot2.png" alt="Source Selection" width="45%">
-</div>
-
-## 🚀 Features
-
-- 🔍 **Smart Search** - Find commands instantly with natural language queries
-- 🧵 **Multiple Sources** - Access content from:
-  - [tldr-pages](https://tldr.sh/) - Community-driven command examples
-  - [cheat.sh](https://cheat.sh/) - Programming language cheatsheets
-  - Local JSON/YAML files - Your custom snippets
-- ⚡ **Performance** - Lightning-fast results with intelligent caching
-- 📎 **Clipboard Integration** - One-click copy with `--copy` flag
-- 📡 **Offline Mode** - Work without internet using local tldr pages
-- 🔖 **Custom Snippets** - Save and manage your own cheat sheets
-
-## 🛠️ Installation
-
-### Quick Install
-
+1. Clone the repository:
 ```bash
-pip install pydevcheat
-```
-
-### Development Install
-
-```bash
-# Clone the repository
 git clone https://github.com/elirancv/PyDevCheat.git
 cd PyDevCheat
-
-# Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install in development mode
-pip install -e .
 ```
 
-## 💻 Usage
+2. Create a virtual environment and activate it:
+```bash
+python -m venv venv
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+```
 
-### Basic Commands
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+4. Run the application:
+```bash
+# Launch desktop interface
+python -m pydevcheat
+
+# Or use CLI
+python -m pydevcheat cli git commit
+```
+
+## 📦 Dependencies
+
+Core Dependencies:
+- **PyQt6**: Modern GUI framework
+- **qt-material**: Material design styling
+- **httpx**: Async HTTP client for API requests
+- **rich**: Terminal output formatting
+- **typer**: CLI interface creation
+- **markdown2**: Markdown parsing
+- **pygments**: Syntax highlighting
+- **beautifulsoup4**: HTML/XML parsing
+- **pyperclip**: Clipboard operations
+- **pyyaml**: YAML file handling
+
+Development Dependencies:
+- **pytest**: Testing framework
+- **black**: Code formatting
+- **flake8**: Code linting
+- **build**: Package building
+- **twine**: Package publishing
+
+## 🎯 Usage
+
+### Desktop Interface
+
+1. **First Launch**:
+   - Click the sync button (↻) to download command databases
+   - Wait for initial synchronization to complete
+
+2. **Finding Commands**:
+   - Type in the search box to filter commands (`Ctrl/Cmd + F`)
+   - Use specific terms for better results
+   - Navigate results with arrow keys (`↑`/`↓`)
+   - Press `Enter` to view details
+   - Press `Esc` to clear search
+
+3. **Browsing Sources**:
+   - Expand source categories in the sidebar
+   - Click on commands to view details
+   - Use `Ctrl/Cmd + C` to copy selected command
+   - Right-click for additional options
+
+4. **Keeping Updated**:
+   - Use the sync button to update command databases
+   - Click refresh (⟳) to reload the current view
+   - Check the status bar for sync progress
+
+### Command Line Interface
 
 ```bash
-# Search for a command (uses TLDR by default)
-pydevcheat cheat git
-pydevcheat cheat "python list comprehension"
+# Basic command search (defaults to TLDR)
+pydevcheat git commit
+pydevcheat python "list comprehension"
 
 # Specify source
-pydevcheat cheat git commit --source cheatsh
-pydevcheat cheat docker run --source cheatsh
+pydevcheat --source cheatsh docker run
+pydevcheat --source devhints javascript
 
 # Copy to clipboard
-pydevcheat cheat git commit --copy
+pydevcheat git commit --copy
 
-# Sync TLDR pages for offline use
+# Sync command databases
 pydevcheat sync
+
+# Show help
+pydevcheat --help
 ```
 
-### Command Options
-
-```bash
-pydevcheat cheat --help
-```
-
-Output:
-```
-Usage: pydevcheat cheat [OPTIONS] QUERY
-
-  Search for cheat sheets and command snippets.
-
-Arguments:
-  QUERY  The command or topic to search for  [required]
-
-Options:
-  --source TEXT  Source to search from (tldr, cheatsh)  [default: tldr]
-  --copy         Copy result to clipboard
-  --help         Show this message and exit.
-```
-
-## 🗂️ Project Structure
+## 🏗️ Project Structure
 
 ```
 pydevcheat/
-├── main.py             # CLI entry point using Typer
+├── __init__.py
+├── gui.py           # Desktop GUI implementation
+├── cli.py           # Command-line interface
 ├── sources/
-│   ├── tldr.py         # Parse tldr Markdown files
-│   ├── cheatsh.py      # Fetch from cheat.sh API
-│   └── local.py        # Load from user's local snippets
-├── cache/
-│   └── cheats.json     # Store previous results
-├── snippets.json       # Optional custom snippet storage
-├── utils.py            # Formatting, clipboard, helpers
-└── README.md
+│   ├── __init__.py
+│   ├── tldr.py      # TLDR Pages integration
+│   ├── cheatsh.py   # Cheat.sh API client
+│   └── devhints.py  # DevHints parser
+├── utils/
+│   ├── __init__.py
+│   ├── cache.py     # Caching system
+│   └── syntax.py    # Syntax highlighting
+└── resources/
+    └── styles/      # UI themes and styles
 ```
 
-## 🔌 Data Sources
+## 🎨 Color Scheme
 
-### TLDR Pages
-- Community-curated command examples
-- Platform-specific pages (Linux, Windows, macOS)
-- Offline support through local sync
-- Markdown-based format
-- Best for basic command usage
+The application uses a carefully crafted dark theme:
 
-### Cheat.sh
-- Real-time programming language cheatsheets
-- Simple HTTP API integration
-- Rich content with examples
-- Multiple language support
-- Best for detailed programming examples
-
-## 🧪 Examples
-
-### Git Commands (TLDR)
-```bash
-$ pydevcheat cheat git
-
-Description:
-Git is a distributed version control system.
-
-Commands:
-  git init                  # Initialize a new repository
-  git clone <url>          # Clone a repository
-  git add <file>           # Add file to staging
-  git commit -m "<msg>"    # Commit staged changes
-```
-
-### Python Lists (cheat.sh)
-```bash
-$ pydevcheat cheat "python list" --source cheatsh
-
-Description:
-Python list operations and methods
-
-Commands:
-  my_list = [1, 2, 3]          # Create a list
-  my_list.append(4)            # Add item to end
-  my_list.extend([5, 6])       # Add multiple items
-  my_list.sort()               # Sort in place
-```
-
-## 🛠️ Advanced Features
-
-- 🔍 **Fuzzy Search** - Find commands even with typos
-- 🎯 **Interactive Mode** - Search and select with arrow keys
-- 📝 **Command History** - Auto-complete from previous searches
-- 📚 **Bookmarks** - Import/export your favorite snippets
-- 🌐 **Web Interface** - Access via browser (planned)
-- 📱 **TUI Mode** - Text-based user interface (planned)
-- 📦 **Binary Distribution** - Cross-platform executable
+- **Background**: Rich dark blue (#1a1f2e)
+- **Sidebar**: Light blue-gray (#212739)
+- **Text**: Bright blue-white (#c4d0ff)
+- **Accents**: 
+  - Primary: Vibrant blue (#7aa2f7)
+  - Secondary: Soft purple (#bb9af7)
+- **Interactive**:
+  - Hover: Rich navy (#3b4366)
+  - Selection: Deep navy (#2d3452)
 
 ## 🤝 Contributing
 
-We welcome contributions! Here's how you can help:
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
-
-### Development Setup
-
-```bash
-# Install development dependencies
-pip install -r requirements-dev.txt
-
-# Run tests
-pytest
-
-# Run linting
-black .
-flake8
-```
 
 ## 📝 License
 
@@ -204,14 +180,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- [tldr-pages](https://tldr.sh/) for their amazing command examples
-- [cheat.sh](https://cheat.sh/) for their comprehensive cheatsheets
-- All contributors and users of this tool
+- [TLDR Pages](https://tldr.sh/) for their excellent command documentation
+- [Cheat.sh](https://cheat.sh/) for their comprehensive API
+- [DevHints](https://devhints.io/) for their quick reference guides
+- The Qt team for their amazing framework
 
 ---
 
-<div align="center">
-Made with ❤️ by [Eliran Cohen](https://github.com/elirancv)
-
-[⬆ Back to top](#-pydevcheat---your-cli-programming-companion)
-</div> 
+Made with ❤️ by [Eliran](https://github.com/elirancv) 
