@@ -2,11 +2,11 @@
   <img src="assets/icons/logo-256.png" alt="PyDevCheat Logo" width="256"/>
   <h1>PyDevCheat</h1>
   <p>
-    <a href="https://github.com/elirancv/PyDevCheat/actions"><img src="https://github.com/elirancv/PyDevCheat/workflows/CI/badge.svg" alt="CI Status"></a>
-    <a href="https://pypi.org/project/pydevcheat/"><img src="https://img.shields.io/pypi/v/pydevcheat.svg" alt="PyPI version"></a>
-    <a href="https://pypi.org/project/pydevcheat/"><img src="https://img.shields.io/pypi/pyversions/pydevcheat.svg" alt="Python versions"></a>
-    <a href="https://github.com/elirancv/PyDevCheat/blob/main/LICENSE"><img src="https://img.shields.io/github/license/elirancv/PyDevCheat.svg" alt="License"></a>
-    <a href="https://github.com/elirancv/PyDevCheat/stargazers"><img src="https://img.shields.io/github/stars/elirancv/PyDevCheat.svg" alt="Stars"></a>
+    <a href="https://github.com/elirancv/PyDevCheat/actions"><img src="https://img.shields.io/github/workflow/status/elirancv/PyDevCheat/CI?style=flat-square" alt="Build Status"></a>
+    <a href="https://github.com/elirancv/PyDevCheat/blob/main/LICENSE"><img src="https://img.shields.io/github/license/elirancv/PyDevCheat?style=flat-square" alt="License"></a>
+    <a href="https://github.com/elirancv/PyDevCheat"><img src="https://img.shields.io/github/stars/elirancv/PyDevCheat?style=flat-square" alt="GitHub Stars"></a>
+    <a href="https://github.com/elirancv/PyDevCheat/issues"><img src="https://img.shields.io/github/issues/elirancv/PyDevCheat?style=flat-square" alt="GitHub Issues"></a>
+    <img src="https://img.shields.io/badge/python-3.8%20%7C%203.9%20%7C%203.10%20%7C%203.11-blue?style=flat-square" alt="Python versions">
   </p>
   <p>
     <b>Your Ultimate Programming Companion for Instant Command Lookups and Code Snippets</b>
