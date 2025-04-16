@@ -333,7 +333,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 ---
 
 <div align="center">
-  Made with ❤️ by <a href="https://github.com/elirancv">Eliran Cohen Vardi</a>
+  Made with ❤️ by <a href="https://github.com/elirancv">Eliran Cohen</a>
   <br><br>
   <a href="https://github.com/elirancv/PyDevCheat/stargazers">⭐ Star us on GitHub</a>
 </div> 
