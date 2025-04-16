@@ -113,4 +113,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [TLDR Pages](https://github.com/tldr-pages/tldr)
 - [Cheat.sh](https://github.com/chubin/cheat.sh)
-- [DevHints](https://devhints.io/) 
+- [DevHints](https://devhints.io/)
+
+---
+
+<div align="center">
+  <sub>Built with ❤️ by <a href="https://github.com/elirancv">Eliran Cohen</a></sub>
+</div> 
