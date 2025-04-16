@@ -11,7 +11,11 @@
 
 ## Overview
 
-PyDevCheat is a modern cheat sheet application that provides instant access to programming commands and snippets through both GUI and CLI interfaces. It combines multiple sources (TLDR Pages, Cheat.sh, DevHints) into one seamless experience.
+PyDevCheat is a modern cheat sheet application that provides instant access to programming commands and snippets through both GUI and CLI interfaces. It combines multiple sources into one seamless experience:
+
+- [TLDR Pages](https://github.com/tldr-pages/tldr) - Community-driven command examples
+- [Cheat.sh](https://github.com/chubin/cheat.sh) - Comprehensive cheat sheet engine
+- [DevHints](https://devhints.io/) - Quick reference guides
 
 <div align="center">
   <img src="assets/docs/screenshot.png" alt="PyDevCheat Screenshot" width="800"/>
