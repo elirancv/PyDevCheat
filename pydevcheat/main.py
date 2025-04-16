@@ -6,7 +6,7 @@ from rich.table import Table
 from rich.style import Style
 from rich.text import Text
 from rich.box import DOUBLE, SQUARE, ROUNDED
-from typing import Optional
+from typing import Optional, List
 import json
 import os
 from pathlib import Path
@@ -48,7 +48,7 @@ def save_cache(cache_data):
     with open(CACHE_FILE, "w") as f:
         json.dump(cache_data, f)
 
-def wrap_text(text: str, width: int) -> list[str]:
+def wrap_text(text: str, width: int) -> List[str]:
     """
     Wrap text to specified width without breaking words.
     """
