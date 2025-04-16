@@ -76,7 +76,7 @@ def wrap_text(text: str, width: int) -> List[str]:
 
 @app.command()
 def cheat(
-    query: list[str] = typer.Argument(..., help="The command or topic to search for"),
+    query: List[str] = typer.Argument(..., help="The command or topic to search for"),
     source: str = typer.Option("tldr", help="Source to search from (tldr, cheatsh, devhints)"),
     copy: bool = typer.Option(False, "--copy", "-c", help="Copy result to clipboard"),
     debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug output"),
