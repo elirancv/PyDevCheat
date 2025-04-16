@@ -45,8 +45,6 @@ cd PyDevCheat
 ```
 
 2. Create and activate a virtual environment:
-
-Using venv:
 ```bash
 # Windows
 python -m venv venv
@@ -55,13 +53,6 @@ venv\Scripts\activate
 # Linux/macOS
 python3 -m venv venv
 source venv/bin/activate
-```
-
-Using Conda:
-```bash
-# Create a new conda environment
-conda create -n pydevcheat python=3.8
-conda activate pydevcheat
 ```
 
 3. Install the package in development mode:

@@ -367,6 +367,9 @@ class MainWindow(QMainWindow):
         
         self.init_ui()
         self.load_sources()
+        
+        # Set initial window state to maximized
+        self.setWindowState(Qt.WindowState.WindowMaximized)
 
     def setup_shortcuts(self):
         """Setup keyboard shortcuts."""
@@ -386,6 +389,13 @@ class MainWindow(QMainWindow):
         """Focus the search box."""
         self.search_box.setFocus()
         self.search_box.selectAll()
+        # Get current source counts
+        counts = self.get_total_commands()
+        count_data = counts['counts']
+        self.statusBar().showMessage(
+            f"Ready to search ({count_data['total']} commands available - "
+            f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
+        )
 
     def copy_content(self):
         """Copy selected content to clipboard."""
@@ -397,7 +407,13 @@ class MainWindow(QMainWindow):
         
         if text:
             pyperclip.copy(text)
-            self.statusBar().showMessage("Content copied to clipboard!", 2000)
+            # Get current source counts
+            counts = self.get_total_commands()
+            count_data = counts['counts']
+            self.statusBar().showMessage(
+                f"Content copied to clipboard! ({count_data['total']} commands available - "
+                f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
+            )
 
     def keyPressEvent(self, event):
         """Handle keyboard events."""
@@ -607,8 +623,8 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(splitter)
 
-        # Create status bar
-        self.statusBar().showMessage("Loading sources...")
+        # Create status bar with initial loading message
+        self.statusBar().showMessage("Loading sources... (0 commands available - TLDR: 0, Cheat.sh: 0, DevHints: 0)")
         self.statusBar().setStyleSheet(f"""
             QStatusBar {{
                 background-color: {COLORS['sidebar']};
@@ -1020,7 +1036,12 @@ class MainWindow(QMainWindow):
         </body></html>"""
         
         self.content.setHtml(welcome_html)
-        self.statusBar().showMessage("Ready" if not is_loading else "Loading sources...")
+        
+        # Update status bar with detailed message
+        if is_loading:
+            self.statusBar().showMessage(f"Loading sources... ({count_data['total']} commands available - TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})")
+        else:
+            self.statusBar().showMessage(f"Ready - {count_data['total']} commands available (TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})")
 
     def load_sources(self):
         """Load command sources in background threads."""
@@ -1142,7 +1163,7 @@ class MainWindow(QMainWindow):
             # Update root text with count
             self.update_root_item_count(self.tldr_root, len(command_list))
             
-            self.tldr_root.setExpanded(True)
+            # Remove the setExpanded call to keep it collapsed
             self.loading_complete_count += 1
             self.check_loading_complete()
             
@@ -1175,7 +1196,7 @@ class MainWindow(QMainWindow):
             # Update root text with count
             self.update_root_item_count(self.cheatsh_root, len(topic_list))
             
-            self.cheatsh_root.setExpanded(True)
+            # Remove the setExpanded call to keep it collapsed
             self.loading_complete_count += 1
             self.check_loading_complete()
             
@@ -1212,7 +1233,7 @@ class MainWindow(QMainWindow):
             # Stop loading animation and remove loading item
             self.cleanup_loading_widget("DevHints")
             
-            self.devhints_root.setExpanded(True)
+            # Remove the setExpanded call to keep it collapsed
             self.loading_complete_count += 1
             self.check_loading_complete()
             
@@ -1235,16 +1256,21 @@ class MainWindow(QMainWindow):
                 self.progress.setVisible(False)
                 
                 if total > 0:
-                    self.statusBar().showMessage(f"Ready - {total:,} commands available")
+                    self.statusBar().showMessage(
+                        f"Ready - {total:,} commands available "
+                        f"(TLDR: {tldr_count:,}, Cheat.sh: {cheatsh_count:,}, DevHints: {devhints_count:,})"
+                    )
                 else:
                     self.statusBar().showMessage("No commands loaded. Try syncing sources.")
                 
                 # Update the welcome screen to reflect current counts
                 self.show_home_screen()
+            else:
+                self.statusBar().showMessage("Loading sources...")
             
         except Exception as e:
             logger.error(f"Error checking loading complete: {e}")
-            self.statusBar().showMessage("Error checking loading status")
+            self.statusBar().showMessage("Loading sources...")
 
     def on_load_error(self, error_info):
         """Handle loading errors."""
@@ -1343,14 +1369,27 @@ class MainWindow(QMainWindow):
             for i in range(self.tree.topLevelItemCount()):
                 filter_item(self.tree.topLevelItem(i))
             
+            # Get current source counts
+            counts = self.get_total_commands()
+            count_data = counts['counts']
+            
             # Update status bar with search results
             if text:
                 if matches == 0:
-                    self.statusBar().showMessage(f"No matches found for '{text}'")
+                    self.statusBar().showMessage(
+                        f"No matches found for '{text}' ({count_data['total']} commands available - "
+                        f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
+                    )
                 else:
-                    self.statusBar().showMessage(f"Found {matches} matches for '{text}'")
+                    self.statusBar().showMessage(
+                        f"Found {matches:,} matches for '{text}' ({count_data['total']} commands available - "
+                        f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
+                    )
             else:
-                self.update_status_message()
+                self.statusBar().showMessage(
+                    f"Ready - {count_data['total']} commands available "
+                    f"(TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
+                )
                 
         except Exception as e:
             logger.error(f"Error in search: {e}")
@@ -1372,7 +1411,13 @@ class MainWindow(QMainWindow):
                 }}
             """)
             self.reset_tree_visibility()
-            self.update_status_message()
+            # Get current source counts
+            counts = self.get_total_commands()
+            count_data = counts['counts']
+            self.statusBar().showMessage(
+                f"Search cleared ({count_data['total']} commands available - "
+                f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
+            )
 
     def update_status_message(self):
         """Update status bar with current state."""
@@ -1392,12 +1437,12 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage("No commands loaded. Try syncing sources.")
             else:
                 self.statusBar().showMessage(
-                    f"Ready - {total_count} commands available "
-                    f"(TLDR: {tldr_count}, Cheat.sh: {cheatsh_count}, DevHints: {devhints_count})"
+                    f"Ready - {total_count:,} commands available "
+                    f"(TLDR: {tldr_count:,}, Cheat.sh: {cheatsh_count:,}, DevHints: {devhints_count:,})"
                 )
         except Exception as e:
             logger.error(f"Error updating status: {e}")
-            self.statusBar().showMessage("Ready")
+            self.statusBar().showMessage("Loading sources...")
 
     def count_items(self, root_item):
         """Count non-root items under a root item."""
@@ -1439,13 +1484,28 @@ class MainWindow(QMainWindow):
             
             # Only load content if this is a leaf item (not a root)
             if item != root:
-                self.statusBar().showMessage(f"Loading '{command}'...")
+                # Get counts for status message
+                counts = self.get_total_commands()
+                count_data = counts['counts']
+                
+                # Format source name nicely
+                source_display = {
+                    "tldr": "TLDR Pages",
+                    "cheat.sh": "Cheat.sh",
+                    "devhints": "DevHints"
+                }.get(source, source)
+                
+                self.statusBar().showMessage(
+                    f"Loading '{command}' from {source_display} ({count_data['total']} commands available - "
+                    f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
+                )
+                
                 if source.startswith("tldr"):
-                    self.load_content("tldr", command)
+                    self.load_content("tldr", command, source_display)
                 elif source.startswith("cheat.sh"):
-                    self.load_content("cheatsh", command)
+                    self.load_content("cheatsh", command, source_display)
                 elif source.startswith("devhints"):
-                    self.load_content("devhints", command)
+                    self.load_content("devhints", command, source_display)
             
         except Exception as e:
             logger.error(f"Error in on_item_clicked: {e}")
@@ -1615,33 +1675,46 @@ class MainWindow(QMainWindow):
         
         return '\n'.join(formatted_lines)
 
-    def load_content(self, source: str, command: str) -> Optional[str]:
+    def load_content(self, source: str, command: str, source_display: str = None) -> Optional[str]:
         """Load content for a command."""
         logger.debug(f"Loading content for {source}:{command}")
-        self.statusBar().showMessage(f"Loading {command}...")
         
         # Clear previous content
         self.content.clear()
         self.content_title.setText(command)
         
         worker = Worker(self._load_content_worker, source, command)
-        worker.signals.result.connect(self._handle_content_result)
+        worker.signals.result.connect(lambda result: self._handle_content_result(result, command, source_display))
         worker.signals.error.connect(lambda err: self.on_content_error(err, command))
         self.threadpool.start(worker)
 
-    def _handle_content_result(self, result):
+    def _handle_content_result(self, result, command: str, source_display: str = None):
         """Handle the content loading result."""
-        if isinstance(result, tuple):
-            source, content = result
-            if source == "tldr":
-                self.display_tldr_content(content)
-            elif source == "cheatsh":
-                self.display_cheatsh_content(content)
-            elif source == "devhints":
-                self.display_devhints_content(content)
-        else:
-            self.display_content(result)
-        self.update_status_message()  # Update status after content is displayed
+        try:
+            if isinstance(result, tuple):
+                source, content = result
+                if source == "tldr":
+                    self.display_tldr_content(content)
+                elif source == "cheatsh":
+                    self.display_cheatsh_content(content)
+                elif source == "devhints":
+                    self.display_devhints_content(content)
+            else:
+                self.display_content(result)
+            
+            # Update status bar with success message
+            counts = self.get_total_commands()
+            count_data = counts['counts']
+            source_name = source_display or source.title()
+            
+            self.statusBar().showMessage(
+                f"Loaded '{command}' from {source_name} ({count_data['total']} commands available - "
+                f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error handling content result: {e}")
+            self.statusBar().showMessage(f"Error displaying content: {str(e)}")
 
     def _load_content_worker(self, source: str, command: str) -> tuple:
         """Worker function to load content."""
@@ -1726,7 +1799,13 @@ class MainWindow(QMainWindow):
     def on_content_error(self, error_info: tuple, command: str):
         """Handle content loading error."""
         error_msg = error_info[0]
-        self.statusBar().showMessage(f"Error loading '{command}': {error_msg}")
+        counts = self.get_total_commands()
+        count_data = counts['counts']
+        
+        self.statusBar().showMessage(
+            f"Error loading '{command}': {error_msg} ({count_data['total']} commands available - "
+            f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
+        )
         self.content.setPlainText(f"Error loading content:\n{error_msg}")
 
     def sync_all_sources(self):
@@ -1935,7 +2014,13 @@ class MainWindow(QMainWindow):
     def expand_all(self):
         """Expand all items in the tree."""
         self.tree.expandAll()
-        self.statusBar().showMessage("Expanded all items", 2000)
+        # Get current source counts
+        counts = self.get_total_commands()
+        count_data = counts['counts']
+        self.statusBar().showMessage(
+            f"Expanded all sections ({count_data['total']} commands available - "
+            f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
+        )
 
     def collapse_all(self):
         """Collapse all items in the tree."""
@@ -1943,7 +2028,13 @@ class MainWindow(QMainWindow):
         # Keep root items expanded
         for i in range(self.tree.topLevelItemCount()):
             self.tree.topLevelItem(i).setExpanded(True)
-        self.statusBar().showMessage("Collapsed all items", 2000)
+        # Get current source counts
+        counts = self.get_total_commands()
+        count_data = counts['counts']
+        self.statusBar().showMessage(
+            f"Collapsed all sections ({count_data['total']} commands available - "
+            f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
+        )
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
@@ -2217,7 +2308,7 @@ def run_gui():
         app.setPalette(palette)
         
         window = MainWindow()
-        window.show()
+        window.show()  # Window will already be maximized due to setWindowState
         
         sys.exit(app.exec())
     except Exception as e:

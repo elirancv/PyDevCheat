@@ -7,7 +7,6 @@ name = "pydevcheat"
 version = "0.1.0"
 description = "A modern cheat sheet application for developers"
 requires-python = ">=3.8"
-dynamic = ["readme", "authors", "keywords", "classifiers", "urls"]
 dependencies = [
     "httpx>=0.28.1",
     "pyyaml>=6.0.1",
