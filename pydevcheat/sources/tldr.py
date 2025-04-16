@@ -5,8 +5,18 @@ from typing import Optional, List, Dict
 import subprocess
 import shutil
 from difflib import get_close_matches
+from ..utils import create_retry_decorator, handle_source_error, NetworkError, SourceError
 
 class TLDRSource:
+    """A source that fetches cheat sheets from TLDR pages."""
+    
+    # Create retry decorator for network requests
+    retry_request = create_retry_decorator(
+        max_attempts=3,
+        min_wait=1,
+        max_wait=10
+    )
+    
     def __init__(self):
         """Initialize the TLDRSource."""
         self.base_url = "https://raw.githubusercontent.com/tldr-pages/tldr/master/pages"
@@ -15,6 +25,13 @@ class TLDRSource:
         
         # Create directory if it doesn't exist
         self.local_path.mkdir(parents=True, exist_ok=True)
+    
+    @retry_request
+    def _make_request(self, url: str) -> str:
+        """Make a retryable HTTP request."""
+        response = httpx.get(url)
+        response.raise_for_status()
+        return response.text
     
     def ensure_repo(self) -> bool:
         """Ensure the TLDR repository exists and is up to date."""
@@ -32,18 +49,22 @@ class TLDRSource:
                 subprocess.run(["git", "pull"], cwd=self.local_path, check=True)
                 return True
         except Exception as e:
-            print(f"Warning: Failed to sync TLDR pages: {str(e)}")
+            handle_source_error("tldr", e)
             return False
     
     def search(self, query: str) -> str:
         """Search for a command in TLDR pages."""
-        # First try to find an exact match
-        result = self._search_exact(query)
-        if result:
-            return result
-            
-        # If no exact match, try fuzzy search
-        return self._search_fuzzy(query)
+        try:
+            # First try to find an exact match
+            result = self._search_exact(query)
+            if result:
+                return result
+                
+            # If no exact match, try fuzzy search
+            return self._search_fuzzy(query)
+        except Exception as e:
+            handle_source_error("tldr", e)
+            return f"# Error searching TLDR pages: {str(e)}"
     
     def _search_exact(self, query: str) -> Optional[str]:
         """Search for an exact command match."""

@@ -7,11 +7,19 @@ import os
 import logging
 from pathlib import Path
 import time
+from ..utils import create_retry_decorator, handle_source_error, NetworkError, SourceError
 
 logger = logging.getLogger(__name__)
 
 class CheatShSource:
     """A source that fetches cheat sheets from cheat.sh."""
+    
+    # Create retry decorator for network requests
+    retry_request = create_retry_decorator(
+        max_attempts=3,
+        min_wait=1,
+        max_wait=10
+    )
     
     def __init__(self):
         """Initialize the CheatShSource."""
@@ -41,6 +49,13 @@ class CheatShSource:
             'nginx', 'apache', 'aws', 'azure', 'gcp'
         ]
     
+    @retry_request
+    def _make_request(self, url: str) -> str:
+        """Make a retryable HTTP request."""
+        response = self.client.get(url)
+        response.raise_for_status()
+        return response.text
+    
     def search(self, query: str) -> Optional[str]:
         """
         Search cheat.sh for a given query and return formatted results.
@@ -67,13 +82,11 @@ class CheatShSource:
             content = None
             for url in urls:
                 try:
-                    response = self.client.get(url)
-                    if response.status_code == 200:
-                        content = response.text
-                        if content and not content.startswith("Unknown topic"):
-                            break
+                    content = self._make_request(url)
+                    if content and not content.startswith("Unknown topic"):
+                        break
                 except Exception as e:
-                    logger.error(f"Error fetching {url}: {e}")
+                    logger.warning(f"Failed to fetch {url}: {e}")
                     continue
 
             if not content or content.startswith("Unknown topic"):
@@ -87,7 +100,7 @@ class CheatShSource:
             return cleaned_content
 
         except Exception as e:
-            logger.error(f"Error fetching from cheat.sh: {e}")
+            handle_source_error("cheat.sh", e)
             return None
             
     def clean_content(self, content: str) -> str:

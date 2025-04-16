@@ -7,11 +7,19 @@ from pathlib import Path
 import os
 import yaml
 from bs4 import BeautifulSoup
+from ..utils import create_retry_decorator, handle_source_error, NetworkError, SourceError
 
 logger = logging.getLogger(__name__)
 
 class DevhintsSource:
     """A source that fetches cheat sheets from the rstacruz/cheatsheets GitHub repository."""
+    
+    # Create retry decorator for network requests
+    retry_request = create_retry_decorator(
+        max_attempts=3,
+        min_wait=1,
+        max_wait=10
+    )
     
     def __init__(self):
         """Initialize the DevhintsSource."""
@@ -40,6 +48,18 @@ class DevhintsSource:
             'nodejs.md'
         ]
         
+    @retry_request
+    def _make_request(self, url: str, headers: Optional[Dict] = None) -> str:
+        """Make a retryable HTTP request."""
+        if headers is None:
+            headers = {
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "text/plain"
+            }
+        response = httpx.get(url, headers=headers, follow_redirects=True, timeout=10.0)
+        response.raise_for_status()
+        return response.text
+        
     def search(self, query: str) -> Optional[str]:
         """
         Search for a cheatsheet by query and return its contents.
@@ -58,25 +78,15 @@ class DevhintsSource:
                 return self._format_content(content)
                 
             # Fetch from GitHub if not in cache
-            url = f"{self.base_url}/{query}"
-            headers = {
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "text/plain"
-            }
+            content = self._make_request(f"{self.base_url}/{query}")
             
-            response = httpx.get(url, headers=headers, follow_redirects=True, timeout=10.0)
-            
-            if response.status_code != 200:
-                return None
-                
             # Cache the content locally
-            content = response.text
             local_file.write_text(content, encoding='utf-8')
             
             return self._format_content(content)
             
         except Exception as e:
-            logger.error(f"Error fetching from GitHub: {e}")
+            handle_source_error("devhints", e)
             return None
             
     def _format_content(self, content: str) -> str:

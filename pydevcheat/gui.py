@@ -6,8 +6,9 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QHBoxLayout, QLineEdit, QTreeWidget, QTreeWidgetItem,
                             QTextEdit, QSplitter, QLabel, QPushButton, QMessageBox,
                             QProgressBar, QStatusBar, QToolBar, QMenu, QStyledItemDelegate,
-                            QFrame)
-from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal, QRunnable, QThreadPool, QObject, QTimer, QPropertyAnimation, QEasingCurve
+                            QFrame, QComboBox, QTabWidget, QTabBar, QGroupBox, QFormLayout,
+                            QSpinBox, QDialogButtonBox, QDialog)
+from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal, QRunnable, QThreadPool, QObject, QTimer, QPropertyAnimation, QEasingCurve, QRect, pyqtProperty
 from PyQt6.QtGui import (QFont, QSyntaxHighlighter, QTextCharFormat, QColor,
                         QAction, QIcon, QPainter, QPainterPath, QLinearGradient, QKeySequence,
                         QShortcut)
@@ -19,6 +20,8 @@ from .sources.tldr import TLDRSource
 from .sources.cheatsh import CheatShSource
 from .sources.devhints import DevhintsSource
 import pyperclip
+from .config import UI_CONFIG, DEFAULT_FONT, MONOSPACE_FONT, TREE_VIEW_CONFIG, CONTENT_VIEW_CONFIG
+from .settings import settings_manager
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -181,57 +184,49 @@ class SyncWorker(Worker):
                            f"Sync failed: {error_msg}\nCheck the logs for details.")
 
 class SyntaxHighlighter(QSyntaxHighlighter):
-    """Syntax highlighter for the content view."""
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.highlighting_rules = []
-
-        # Main title format (h1)
-        main_title_format = QTextCharFormat()
-        main_title_format.setForeground(QColor(COLORS['heading']))
-        main_title_format.setFontWeight(QFont.Weight.Bold)
-        font = QFont("Inter", 20)  # Using Inter font for modern look
-        main_title_format.setFont(font)
-        self.highlighting_rules.append((r'^\# .*$', main_title_format))
-
-        # Section title format (h2)
-        section_title_format = QTextCharFormat()
-        section_title_format.setForeground(QColor(COLORS['heading']))
-        section_title_format.setFontWeight(QFont.Weight.Bold)
-        font = QFont("Inter", 16)
-        section_title_format.setFont(font)
-        self.highlighting_rules.append((r'^\#\# .*$', section_title_format))
-
-        # Separator line format
-        separator_format = QTextCharFormat()
-        separator_format.setForeground(QColor(COLORS['border']))
-        self.highlighting_rules.append((r'^─+$', separator_format))
-
-        # Command format (monospace bold)
-        command_format = QTextCharFormat()
-        command_format.setForeground(QColor(COLORS['text']))
-        command_format.setFontWeight(QFont.Weight.Bold)
-        font = QFont("JetBrains Mono", 12)  # Modern monospace font
-        command_format.setFont(font)
-        self.highlighting_rules.append((r'^[^#].*?(?=\s+#|$)', command_format))
-
-        # Comment format (description)
-        comment_format = QTextCharFormat()
-        comment_format.setForeground(QColor(COLORS['text_muted']))
-        font = QFont("Inter", 12)
-        comment_format.setFont(font)
-        self.highlighting_rules.append((r'#.*$', comment_format))
-
-        # URL format
-        url_format = QTextCharFormat()
-        url_format.setForeground(QColor(COLORS['link']))
-        url_format.setFontUnderline(True)
-        self.highlighting_rules.append((r'https?://\S+', url_format))
-
+        
+        # Create formats with the correct font size
+        self.formats = {
+            'command': self._create_format(UI_CONFIG["colors"]["highlight"], True),
+            'description': self._create_format(UI_CONFIG["colors"]["text"]),
+            'example': self._create_format(UI_CONFIG["colors"]["accent"]),
+            'comment': self._create_format('#7c7f93', italic=True),  # Muted color for comments
+            'section': self._create_format(UI_CONFIG["colors"]["highlight"], True, size_adjust=1)  # Slightly larger
+        }
+        
+    def _create_format(self, color, bold=False, italic=False, size_adjust=0):
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor(color))
+        if bold:
+            fmt.setFontWeight(QFont.Weight.Bold)
+        if italic:
+            fmt.setFontItalic(True)
+        # Use the content font size as base and adjust if needed
+        font_size = UI_CONFIG["font_sizes"]["content"] + size_adjust
+        fmt.setFontPointSize(font_size)
+        return fmt
+        
     def highlightBlock(self, text):
-        for pattern, format in self.highlighting_rules:
-            for match in re.finditer(pattern, text):
-                self.setFormat(match.start(), match.end() - match.start(), format)
+        # Highlight section headers
+        if text.startswith('#'):
+            self.setFormat(0, len(text), self.formats['section'])
+            return
+            
+        # Highlight commands and descriptions
+        if '#' in text:
+            command, description = text.split('#', 1)
+            # Highlight command
+            self.setFormat(0, len(command), self.formats['command'])
+            # Highlight description
+            self.setFormat(len(command) + 1, len(description), self.formats['description'])
+        else:
+            # If no #, treat as example or regular text
+            if text.strip().startswith('$') or text.strip().startswith('>'):
+                self.setFormat(0, len(text), self.formats['example'])
+            else:
+                self.setFormat(0, len(text), self.formats['description'])
 
 class ModernProgressBar(QProgressBar):
     def __init__(self, parent=None):
@@ -337,6 +332,13 @@ class MainWindow(QMainWindow):
         self.threadpool = QThreadPool()
         logger.debug(f"Multithreading with maximum {self.threadpool.maxThreadCount()} threads")
         
+        # Load settings
+        self.font_sizes = settings_manager.get_font_sizes()
+        
+        # Update default fonts with loaded settings
+        DEFAULT_FONT.setPointSize(self.font_sizes["content"])
+        MONOSPACE_FONT.setPointSize(self.font_sizes["content"])
+        
         # Store references to loading widgets
         self.loading_widgets = {}
         
@@ -416,10 +418,11 @@ class MainWindow(QMainWindow):
     def init_ui(self):
         """Initialize the user interface."""
         self.setWindowTitle("PyDevCheat - Your Programming Companion")
-        # Increase minimum and default window size
-        self.setMinimumSize(1000, 800)
-        # Set a reasonable starting size that shows all welcome content
-        self.resize(1200, 900)
+        self.setMinimumSize(800, 600)
+        
+        # Set application-wide font
+        app_font = QFont("Inter", self.font_sizes["content"])  # Use loaded font size
+        QApplication.setFont(app_font)
         
         # Create central widget
         central_widget = QWidget()
@@ -466,7 +469,7 @@ class MainWindow(QMainWindow):
                 border: none;
                 border-radius: 3px;
                 font-family: 'Inter';
-                font-size: 16px;
+                font-size: {self.font_sizes["search"]}pt;
                 font-weight: normal;
                 margin: 5px 6px 5px 0px;
                 padding: 0;
@@ -496,7 +499,7 @@ class MainWindow(QMainWindow):
                 border-radius: 4px;
                 padding: 4px 8px;
                 font-family: 'Inter';
-                font-size: 12px;
+                font-size: {self.font_sizes["search"]}pt;
             }}
             SearchBox:focus {{
                 border: 1px solid {COLORS['accent']};
@@ -541,7 +544,7 @@ class MainWindow(QMainWindow):
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
         self.tree.setAnimated(True)
-        self.tree.setIndentation(12)  # Even smaller indentation
+        self.tree.setIndentation(12)
         self.tree.setItemsExpandable(True)
         self.tree.setExpandsOnDoubleClick(True)
         self.tree.itemClicked.connect(self.on_item_clicked)
@@ -552,7 +555,7 @@ class MainWindow(QMainWindow):
                 background-color: {COLORS['sidebar']};
                 border: none;
                 font-family: 'Inter';
-                font-size: 12px;
+                font-size: {self.font_sizes["source_list"]}pt;
             }}
             QTreeWidget::item {{
                 color: {COLORS['text']};
@@ -578,15 +581,59 @@ class MainWindow(QMainWindow):
             QTreeWidget::branch:open:has-children:has-siblings {{
                 image: none;
             }}
+            QScrollBar:vertical {{
+                background-color: {COLORS['background']};
+                width: 8px;
+                margin: 0px;
+                border-radius: 4px;
+            }}
+            QScrollBar::handle:vertical {{
+                background-color: {COLORS['border']};
+                min-height: 30px;
+                border-radius: 4px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background-color: {COLORS['accent']};
+            }}
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical,
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {{
+                height: 0px;
+                background: none;
+                border: none;
+            }}
+            QScrollBar:horizontal {{
+                background-color: {COLORS['background']};
+                height: 8px;
+                margin: 0px;
+                border-radius: 4px;
+            }}
+            QScrollBar::handle:horizontal {{
+                background-color: {COLORS['border']};
+                min-width: 30px;
+                border-radius: 4px;
+            }}
+            QScrollBar::handle:horizontal:hover {{
+                background-color: {COLORS['accent']};
+            }}
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal,
+            QScrollBar::add-page:horizontal,
+            QScrollBar::sub-page:horizontal {{
+                width: 0px;
+                background: none;
+                border: none;
+            }}
         """)
         sidebar_layout.addWidget(self.tree)
 
         # Initialize root items with minimal styling
         def create_root_item(name):
+            """Create a root item with proper styling."""
             item = QTreeWidgetItem(self.tree)
-            item.setText(0, name)
-            item.setForeground(0, QColor(COLORS['text']))
-            font = item.font(0)
+            item.setData(0, Qt.ItemDataRole.UserRole, name)  # Store original name
+            font = QFont("Inter", self.font_sizes["source_header"])  # Use loaded font size
             font.setBold(True)
             item.setFont(0, font)
             return item
@@ -595,6 +642,11 @@ class MainWindow(QMainWindow):
         self.tldr_root = create_root_item("TLDR Pages")
         self.cheatsh_root = create_root_item("Cheat.sh")
         self.devhints_root = create_root_item("DevHints")
+
+        # Update initial counts
+        self.update_root_item_count(self.tldr_root, 0)
+        self.update_root_item_count(self.cheatsh_root, 0)
+        self.update_root_item_count(self.devhints_root, 0)
 
         # Create loading widgets
         def create_loading_item(parent, source_name):
@@ -621,17 +673,18 @@ class MainWindow(QMainWindow):
             }}
         """)
         content_layout = QVBoxLayout(content_area)
-        content_layout.setContentsMargins(16, 16, 16, 16)
-        content_layout.setSpacing(12)
+        content_layout.setContentsMargins(16, 0, 16, 16)  # Removed top margin
+        content_layout.setSpacing(8)  # Reduced spacing between elements
 
         # Add title
-        self.content_title = QLabel("Welcome to PyDevCheat")
+        self.content_title = QLabel("")  # Start with empty title
         self.content_title.setStyleSheet(f"""
             QLabel {{
                 color: {COLORS['heading']};
                 font-family: 'Inter';
-                font-size: 20px;
+                font-size: {self.font_sizes["title"]}pt;
                 font-weight: bold;
+                padding: 8px 0;  # Add padding to the title itself
             }}
         """)
         content_layout.addWidget(self.content_title)
@@ -661,47 +714,8 @@ class MainWindow(QMainWindow):
             }}
         """)
 
-        # Set up initial welcome content with proper styling
-        welcome_content = """# 🎯 Welcome to PyDevCheat
-
-Your ultimate programming companion for instant command lookups and code snippets.
-
-## 🚀 Quick Start
-• Type in the search box above to find commands
-  Example: `git commit` or `docker run`
-• Browse categories in the sidebar
-• Click any command to view details
-
-## 📚 Available Sources
-• TLDR Pages
-  Simplified and practical command examples
-• Cheat.sh
-  Community-driven cheat sheets and snippets
-• DevHints
-  Quick reference guides for developers
-
-## ⌨️ Keyboard Shortcuts
-• Ctrl/Cmd + F: Focus search
-• Esc: Clear search
-• Up/Down: Navigate results
-• Ctrl/Cmd + C: Copy content
-
-## 💡 Pro Tips
-• Use specific terms for better results
-  Example: `python list comprehension`
-• Select text to copy specific parts
-• Right-click items for more options
-• Check the status bar for updates
-
-──────────────────────────────────
-
-💻 Ready with {total_commands} commands at your fingertips!"""
-
-        # Update initial content with total command count
-        self.content.setPlainText(welcome_content.format(
-            total_commands=self.get_total_commands()
-        ))
-        self.content_title.setText("Welcome to PyDevCheat")
+        # Show welcome screen
+        self.show_home_screen()
 
     def create_toolbar(self):
         """Create a premium modern toolbar."""
@@ -709,7 +723,7 @@ Your ultimate programming companion for instant command lookups and code snippet
         toolbar.setMovable(False)
         toolbar.setFixedHeight(44)
         
-        # Create main container with enhanced styling
+        # Create main container
         container = QWidget()
         container.setFixedHeight(44)
         container.setStyleSheet(f"""
@@ -723,33 +737,94 @@ Your ultimate programming companion for instant command lookups and code snippet
         layout.setContentsMargins(8, 0, 8, 0)
         layout.setSpacing(4)
         
-        # Enhanced button style with new colors
-        button_style = f"""
-            QPushButton {{
-                background-color: {COLORS['code_bg']};
-                color: {COLORS['text_muted']};
-                border: none;
-                border-radius: 5px;
-                padding: 0px;
-                font-family: 'Inter';
-                font-weight: 600;
-                font-size: 15px;
-                min-width: 34px;
-                max-width: 34px;
-                min-height: 34px;
-                max-height: 34px;
-            }}
-            QPushButton:hover {{
-                background-color: {COLORS['hover']};
-                color: {COLORS['text']};
-            }}
-            QPushButton:pressed {{
-                background-color: {COLORS['selection']};
-                color: {COLORS['accent']};
-            }}
-        """
-        
-        # Create button group container with new styling
+        class ColorAnimatedButton(QPushButton):
+            def __init__(self, text, tooltip, parent=None):
+                super().__init__(text, parent)
+                self.setFixedSize(34, 34)
+                self.setToolTip(tooltip)
+                self.setCursor(Qt.CursorShape.PointingHandCursor)
+                
+                # Create color animations
+                self._color_animation = QPropertyAnimation(self, b"color", self)
+                self._bg_animation = QPropertyAnimation(self, b"bgColor", self)
+                self._bg_animation.setDuration(150)
+                
+                # Store colors as properties
+                self._current_color = QColor(COLORS['text_muted'])
+                self._current_bg_color = QColor(COLORS['code_bg'])
+                
+                self.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {COLORS['code_bg']};
+                        color: {COLORS['text_muted']};
+                        border: none;
+                        border-radius: 5px;
+                        font-family: 'Inter';
+                        font-weight: 600;
+                        font-size: 15px;
+                    }}
+                """)
+
+            def enterEvent(self, event):
+                self._animate_colors(QColor(COLORS['accent']), QColor(COLORS['hover']))
+                super().enterEvent(event)
+
+            def leaveEvent(self, event):
+                self._animate_colors(QColor(COLORS['text_muted']), QColor(COLORS['code_bg']))
+                super().leaveEvent(event)
+
+            def mousePressEvent(self, event):
+                self._animate_colors(QColor(COLORS['accent']), QColor(COLORS['selection']))
+                super().mousePressEvent(event)
+
+            def mouseReleaseEvent(self, event):
+                self._animate_colors(QColor(COLORS['accent']), QColor(COLORS['hover']))
+                super().mouseReleaseEvent(event)
+
+            def _animate_colors(self, text_color, bg_color):
+                self._color_animation.stop()
+                self._bg_animation.stop()
+                
+                self._color_animation.setStartValue(self._current_color)
+                self._color_animation.setEndValue(text_color)
+                
+                self._bg_animation.setStartValue(self._current_bg_color)
+                self._bg_animation.setEndValue(bg_color)
+                
+                self._current_color = text_color
+                self._current_bg_color = bg_color
+                
+                self._color_animation.start()
+                self._bg_animation.start()
+
+            def _set_color(self, color):
+                self._update_style(text_color=color)
+
+            def _set_bg_color(self, color):
+                self._update_style(bg_color=color)
+
+            def _update_style(self, text_color=None, bg_color=None):
+                if text_color:
+                    self._current_color = text_color
+                if bg_color:
+                    self._current_bg_color = bg_color
+                
+                self.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {self._current_bg_color.name()};
+                        color: {self._current_color.name()};
+                        border: none;
+                        border-radius: 5px;
+                        font-family: 'Inter';
+                        font-weight: 600;
+                        font-size: 15px;
+                    }}
+                """)
+
+            color = pyqtProperty(QColor, fset=_set_color)
+            bgColor = pyqtProperty(QColor, fset=_set_bg_color)
+
+        # Create button group container
         button_group = QWidget()
         button_group.setStyleSheet(f"""
             QWidget {{
@@ -762,32 +837,30 @@ Your ultimate programming companion for instant command lookups and code snippet
         group_layout.setContentsMargins(0, 0, 0, 0)
         group_layout.setSpacing(2)
         
-        # Helper function to create modern action buttons
-        def create_action_button(text, tooltip, callback):
-            btn = QPushButton(text)
-            btn.setFixedSize(34, 34)
-            btn.setToolTip(tooltip)
-            btn.clicked.connect(callback)
-            btn.setStyleSheet(button_style)
-            return btn
-        
         # Create and add buttons with modern icons
-        home_btn = create_action_button("⌂", "Go to Welcome Screen (Home)", self.show_welcome)
+        home_btn = ColorAnimatedButton("⌂", "Go to Welcome Screen (Home)")
+        home_btn.clicked.connect(self.show_home_screen)
         group_layout.addWidget(home_btn)
         
-        refresh_btn = create_action_button("⟳", "Reload All Commands (Refresh)", self.load_sources)
+        refresh_btn = ColorAnimatedButton("⟳", "Reload All Commands (Refresh)")
+        refresh_btn.clicked.connect(self.load_sources)
         group_layout.addWidget(refresh_btn)
         
-        sync_btn = create_action_button("↻", "Synchronize All Sources (Sync)", self.sync_all_sources)
+        sync_btn = ColorAnimatedButton("↻", "Synchronize All Sources (Sync)")
+        sync_btn.clicked.connect(self.sync_all_sources)
         group_layout.addWidget(sync_btn)
 
-        copy_btn = create_action_button("⎘", "Copy Content (Ctrl+C)", self.copy_content)
+        copy_btn = ColorAnimatedButton("⎘", "Copy Content (Ctrl+C)")
+        copy_btn.clicked.connect(self.copy_content)
         group_layout.addWidget(copy_btn)
+
+        # Add settings button with updated icon and style
+        settings_btn = ColorAnimatedButton("⚿", "Settings")  # Changed to ⚿ for better style consistency
+        settings_btn.clicked.connect(self.show_settings)
+        group_layout.addWidget(settings_btn)
         
         # Add the button group to main layout
         layout.addWidget(button_group)
-        
-        # Add stretch to push everything to the left
         layout.addStretch()
         
         # Set the container as the toolbar widget
@@ -801,48 +874,91 @@ Your ultimate programming companion for instant command lookups and code snippet
         toolbar.addWidget(container)
         self.addToolBar(toolbar)
 
-    def show_welcome(self):
-        """Show the welcome screen."""
-        self.content_title.setText("Welcome to PyDevCheat")
-        welcome_content = """# 🎯 Welcome to PyDevCheat
+    def show_home_screen(self):
+        """Show the home screen with welcome message."""
+        self.content_title.setText("PyDevCheat")
+        self.content.clear()
 
-Your ultimate programming companion for instant command lookups and code snippets.
+        # Get current counts
+        tldr_count = self.tldr_root.childCount()
+        cheatsh_count = self.cheatsh_root.childCount()
+        devhints_count = self.devhints_root.childCount()
+        total_commands = tldr_count + cheatsh_count + devhints_count
 
-## 🚀 Quick Start
-• Type in the search box above to find commands
-  Example: `git commit` or `docker run`
-• Browse categories in the sidebar
-• Click any command to view details
+        welcome_content = f"""
+        <html>
+        <body style="font-family: 'Inter'; line-height: 1.6; margin: 0; padding: 20px;">
+            <h1 style="color: {COLORS['accent']}; font-size: 24px; margin: 0 0 10px 0;">⚡ Command-Line Supercharger</h1>
+            <p style="color: {COLORS['text']}; font-size: 14px; margin: 0 0 30px 0;">Instant access to developer knowledge at your fingertips.</p>
 
-## 📚 Available Sources
-• TLDR Pages
-  Simplified and practical command examples
-• Cheat.sh
-  Community-driven cheat sheets and snippets
-• DevHints
-  Quick reference guides for developers
+            <div style="margin-bottom: 30px;">
+                <div style="background: {COLORS['code_bg']}; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                    <h3 style="color: {COLORS['accent_secondary']}; margin: 0 0 15px 0;">🔍 Quick Search</h3>
+                    <p style="color: {COLORS['text_muted']}; margin: 0;">Press <span style="background: {COLORS['background']}; padding: 2px 6px; border-radius: 4px;">Ctrl/Cmd + F</span> and type<br>Example: <code style="background: {COLORS['background']}; padding: 2px 6px; border-radius: 4px;">git commit</code></p>
+                </div>
 
-## ⌨️ Keyboard Shortcuts
-• Ctrl/Cmd + F: Focus search
-• Esc: Clear search
-• Up/Down: Navigate results
-• Ctrl/Cmd + C: Copy content
+                <div style="background: {COLORS['code_bg']}; padding: 20px; border-radius: 8px;">
+                    <h3 style="color: {COLORS['accent_secondary']}; margin: 0 0 15px 0;">📚 Browse Sources</h3>
+                    <p style="color: {COLORS['text_muted']}; margin: 0;">
+                        • TLDR Pages ({tldr_count:,})<br>
+                        • Cheat.sh ({cheatsh_count:,})<br>
+                        • DevHints ({devhints_count:,})
+                    </p>
+                </div>
+            </div>
 
-## 💡 Pro Tips
-• Use specific terms for better results
-  Example: `python list comprehension`
-• Select text to copy specific parts
-• Right-click items for more options
-• Check the status bar for updates
+            <div style="background: {COLORS['code_bg']}; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
+                <h3 style="color: {COLORS['link']}; margin: 0 0 15px 0;">⌨️ Keyboard Shortcuts</h3>
+                <table style="color: {COLORS['text_muted']}; border-spacing: 10px;">
+                    <tr>
+                        <td><span style="background: {COLORS['background']}; padding: 2px 6px; border-radius: 4px;">Ctrl/Cmd + F</span></td>
+                        <td>Focus Search</td>
+                    </tr>
+                    <tr>
+                        <td><span style="background: {COLORS['background']}; padding: 2px 6px; border-radius: 4px;">Esc</span></td>
+                        <td>Clear Search</td>
+                    </tr>
+                    <tr>
+                        <td><span style="background: {COLORS['background']}; padding: 2px 6px; border-radius: 4px;">↑/↓</span></td>
+                        <td>Navigate Results</td>
+                    </tr>
+                    <tr>
+                        <td><span style="background: {COLORS['background']}; padding: 2px 6px; border-radius: 4px;">Ctrl/Cmd + C</span></td>
+                        <td>Copy Content</td>
+                    </tr>
+                </table>
+            </div>
 
-──────────────────────────────────
+            <div style="margin-bottom: 30px;">
+                <div style="background: {COLORS['code_bg']}; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                    <h3 style="color: {COLORS['success']}; margin: 0 0 15px 0;">💡 Pro Tips</h3>
+                    <ul style="color: {COLORS['text_muted']}; list-style-type: none; padding: 0; margin: 0;">
+                        <li style="margin-bottom: 5px;">• Use specific search terms</li>
+                        <li style="margin-bottom: 5px;">• Right-click for context menu</li>
+                        <li>• Select text to copy parts</li>
+                    </ul>
+                </div>
 
-💻 Ready with {total_commands} commands at your fingertips!"""
+                <div style="background: {COLORS['code_bg']}; padding: 20px; border-radius: 8px;">
+                    <h3 style="color: {COLORS['success']}; margin: 0 0 15px 0;">🚀 Quick Links</h3>
+                    <ul style="color: {COLORS['text_muted']}; list-style-type: none; padding: 0; margin: 0;">
+                        <li style="margin-bottom: 5px;">• <a href="https://github.com/tldr-pages/tldr" style="color: {COLORS['link']}; text-decoration: none;">TLDR Pages</a></li>
+                        <li style="margin-bottom: 5px;">• <a href="https://cheat.sh/" style="color: {COLORS['link']}; text-decoration: none;">Cheat.sh</a></li>
+                        <li>• <a href="https://devhints.io/" style="color: {COLORS['link']}; text-decoration: none;">DevHints.io</a></li>
+                    </ul>
+                </div>
+            </div>
 
-        # Update initial content with total command count
-        self.content.setPlainText(welcome_content.format(
-            total_commands=self.get_total_commands()
-        ))
+            <div style="text-align: center; margin-top: 30px; color: {COLORS['accent']}; font-size: 12px;">
+                {total_commands:,} commands ready • Built with ♥ for developers
+            </div>
+        </body>
+        </html>
+        """
+
+        # Set HTML content
+        self.content.setHtml(welcome_content)
+        self.statusBar().showMessage("Ready")
 
     def load_sources(self):
         """Load command sources in background threads."""
@@ -921,6 +1037,14 @@ Your ultimate programming companion for instant command lookups and code snippet
             except Exception as e:
                 logger.error(f"Error cleaning up loading widget for {source_name}: {e}")
 
+    def update_root_item_count(self, item, count):
+        """Update root item text with properly formatted count."""
+        original_name = item.data(0, Qt.ItemDataRole.UserRole)
+        formatted_count = f"{count:,}" if count > 0 else "0"  # Add commas for thousands
+        # Use a more subtle formatting for the count
+        item.setText(0, f"{original_name}  {formatted_count}")
+        item.setForeground(0, QColor(COLORS['text_muted']))
+
     def on_tldr_loaded(self, commands):
         """Handle loaded TLDR commands."""
         try:
@@ -929,8 +1053,8 @@ Your ultimate programming companion for instant command lookups and code snippet
             # Stop loading animation and remove loading item
             self.cleanup_loading_widget("TLDR Pages")
             
-            # Update root text
-            self.tldr_root.setText(0, f"TLDR Pages ({len(commands)})")
+            # Update root text with count
+            self.update_root_item_count(self.tldr_root, len(commands))
             
             # Create a flat list of all commands with their platforms
             command_list = []
@@ -973,7 +1097,7 @@ Your ultimate programming companion for instant command lookups and code snippet
                 topic_list = list(topics)
             
             # Update root text with count
-            self.cheatsh_root.setText(0, f"Cheat.sh ({len(topic_list)})")
+            self.update_root_item_count(self.cheatsh_root, len(topic_list))
             
             # Sort topics alphabetically
             topic_list.sort(key=str.lower)
@@ -1006,7 +1130,7 @@ Your ultimate programming companion for instant command lookups and code snippet
                 topic_list = [(topic, topic) for topic in topics]
             
             # Update root text with count
-            self.devhints_root.setText(0, f"DevHints ({len(topic_list)})")
+            self.update_root_item_count(self.devhints_root, len(topic_list))
             
             # Sort topics alphabetically
             topic_list.sort(key=lambda x: x[0].lower())
@@ -1227,13 +1351,13 @@ Your ultimate programming companion for instant command lookups and code snippet
         title_layout = QHBoxLayout(title_container)
         title_layout.setContentsMargins(16, 0, 16, 0)
 
-        self.content_title = QLabel("Welcome to PyDevCheat")
+        self.content_title = QLabel("")
         self.content_title.setStyleSheet(f"""
             QLabel {{
                 color: {COLORS['text']};
-                font-family: 'Inter';
+                font-family: Inter;
                 font-size: 14px;
-                font-weight: 600;
+                font-weight: bold;
             }}
         """)
         title_layout.addWidget(self.content_title)
@@ -1251,13 +1375,14 @@ Your ultimate programming companion for instant command lookups and code snippet
                 color: {COLORS['text']};
                 border: none;
                 font-family: 'JetBrains Mono';
-                font-size: 13px;
+                font-size: {self.font_sizes["content"]}pt;
                 selection-background-color: {COLORS['selection']};
                 selection-color: {COLORS['text']};
+                padding: 0;
             }}
         """)
-        content_layout.addWidget(self.content)
 
+        content_layout.addWidget(self.content)
         return content_container
 
     def format_content(self, content: str) -> str:
@@ -1336,37 +1461,109 @@ Your ultimate programming companion for instant command lookups and code snippet
         """Load content for a command."""
         logger.debug(f"Loading content for {source}:{command}")
         self.statusBar().showMessage(f"Loading {command}...")
+        
+        # Clear previous content
+        self.content.clear()
         self.content_title.setText(command)
         
         worker = Worker(self._load_content_worker, source, command)
-        worker.signals.result.connect(self.display_content)
+        worker.signals.result.connect(self._handle_content_result)
         worker.signals.error.connect(lambda err: self.on_content_error(err, command))
         self.threadpool.start(worker)
 
-    def _load_content_worker(self, source: str, command: str) -> str:
+    def _handle_content_result(self, result):
+        """Handle the content loading result."""
+        if isinstance(result, tuple):
+            source, content = result
+            if source == "tldr":
+                self.display_tldr_content(content)
+            elif source == "cheatsh":
+                self.display_cheatsh_content(content)
+            elif source == "devhints":
+                self.display_devhints_content(content)
+        else:
+            self.display_content(result)
+        self.update_status_message()  # Update status after content is displayed
+
+    def _load_content_worker(self, source: str, command: str) -> tuple:
         """Worker function to load content."""
         try:
             if source == "tldr":
                 content = self.tldr_source.search(command)
+                return ("tldr", content)
             elif source == "cheatsh":
                 content = self.cheatsh_source.search(command)
+                return ("cheatsh", content)
             elif source == "devhints":
                 content = self.devhints_source.search(command)
+                return ("devhints", content)
             else:
                 raise ValueError(f"Unknown source: {source}")
-            
-            if not content:
-                raise ValueError(f"No content found for {command}")
-            
-            return self.format_content(content)
         except Exception as e:
             logger.error(f"Error loading content for {source}:{command}: {e}")
             raise
 
-    def display_content(self, content: str):
-        """Display the content in the text view."""
-        self.content.setPlainText(content)
-        self.update_status_message()
+    def display_tldr_content(self, content):
+        """Display TLDR content with proper formatting."""
+        if not content:
+            self.display_error("No TLDR content available")
+            return
+            
+        self.content_title.setText("TLDR Pages")
+        formatted_content = self.format_content(content)
+        self.content.clear()
+        self.content.setPlainText(formatted_content.lstrip())  # Remove leading whitespace
+        self.statusBar().showMessage("Ready")
+        
+    def display_cheatsh_content(self, content):
+        """Display Cheat.sh content with proper formatting."""
+        if not content:
+            self.display_error("No Cheat.sh content available")
+            return
+            
+        self.content_title.setText("Cheat.sh")
+        formatted_content = self.format_content(content)
+        self.content.clear()
+        self.content.setPlainText(formatted_content.lstrip())  # Remove leading whitespace
+        self.statusBar().showMessage("Ready")
+        
+    def display_devhints_content(self, content):
+        """Display DevHints content with proper formatting."""
+        if not content:
+            self.display_error("No DevHints content available")
+            return
+            
+        self.content_title.setText("DevHints")
+        formatted_content = self.format_content(content)
+        self.content.clear()
+        self.content.setPlainText(formatted_content.lstrip())  # Remove leading whitespace
+        self.statusBar().showMessage("Ready")
+        
+    def display_search_results(self, results):
+        """Display search results with proper formatting."""
+        if not results:
+            self.display_error("No search results found")
+            return
+            
+        self.content_title.setText("Search Results")
+        self.content.clear()
+        self.content.setPlainText(results)
+        self.statusBar().showMessage("Search completed")
+        
+    def display_error(self, error_message):
+        """Display error message with proper formatting."""
+        self.content_title.setText("Error")
+        self.content.clear()
+        error_html = f"""
+        <html>
+        <body style="color: {COLORS['error']}; font-family: 'Inter'; padding: 20px;">
+            <h3 style="margin: 0;">❌ Error</h3>
+            <p style="margin: 10px 0;">{error_message}</p>
+        </body>
+        </html>
+        """
+        self.content.setHtml(error_html)
+        self.statusBar().showMessage(f"Error: {error_message}")
 
     def on_content_error(self, error_info: tuple, command: str):
         """Handle content loading error."""
@@ -1536,6 +1733,267 @@ Your ultimate programming companion for instant command lookups and code snippet
         except Exception as e:
             logger.error(f"Error counting commands: {e}")
             return "thousands of"  # Fallback if counting fails
+
+    def display_content(self, content: str):
+        """Display the content in the text view."""
+        if content.startswith('<html>'):
+            self.content.setHtml(content)
+        else:
+            self.content.setPlainText(content)
+        self.update_status_message()
+
+    def show_settings(self):
+        """Show the settings dialog."""
+        dialog = SettingsDialog(self)
+        dialog.setStyleSheet(f"""
+            QDialog {{
+                background-color: {COLORS['background']};
+                color: {COLORS['text']};
+            }}
+        """)
+        dialog.exec()
+
+class SettingsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.setWindowTitle("Settings")
+        self.setMinimumWidth(400)
+        self.setup_ui()
+        
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+        
+        # Create tabs
+        tabs = QTabWidget()
+        tabs.setStyleSheet(f"""
+            QTabWidget::pane {{
+                border: 1px solid {COLORS['border']};
+                background: {COLORS['background']};
+                padding: 10px;
+            }}
+            QTabWidget::tab-bar {{
+                alignment: left;
+            }}
+            QTabBar::tab {{
+                background: {COLORS['sidebar']};
+                color: {COLORS['text']};
+                padding: 8px 16px;
+                border: 1px solid {COLORS['border']};
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+            }}
+            QTabBar::tab:selected {{
+                background: {COLORS['background']};
+                border-bottom: none;
+            }}
+            QTabBar::tab:!selected {{
+                margin-top: 2px;
+            }}
+        """)
+        
+        # Appearance tab
+        appearance_tab = QWidget()
+        appearance_layout = QVBoxLayout(appearance_tab)
+        
+        # Font sizes group
+        font_group = QGroupBox("Font Sizes")
+        font_group.setStyleSheet(f"""
+            QGroupBox {{
+                color: {COLORS['text']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 4px;
+                margin-top: 1em;
+                padding-top: 1em;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 8px;
+                padding: 0 3px;
+            }}
+        """)
+        font_layout = QFormLayout(font_group)
+        font_layout.setSpacing(10)
+        
+        # Create spin boxes for font sizes
+        self.source_list_size = QSpinBox()
+        self.source_header_size = QSpinBox()  # New spinbox for source headers
+        self.content_size = QSpinBox()
+        self.search_size = QSpinBox()
+        self.title_size = QSpinBox()
+        
+        for spinbox in [self.source_list_size, self.source_header_size, self.content_size, self.search_size, self.title_size]:
+            spinbox.setRange(6, 24)
+            spinbox.setStyleSheet(f"""
+                QSpinBox {{
+                    background-color: {COLORS['code_bg']};
+                    color: {COLORS['text']};
+                    border: 1px solid {COLORS['border']};
+                    border-radius: 4px;
+                    padding: 4px;
+                    min-width: 60px;
+                }}
+                QSpinBox::up-button, QSpinBox::down-button {{
+                    background: {COLORS['sidebar']};
+                    border: none;
+                    border-radius: 2px;
+                    margin: 1px;
+                }}
+                QSpinBox::up-button:hover, QSpinBox::down-button:hover {{
+                    background: {COLORS['hover']};
+                }}
+            """)
+        
+        # Set current values from settings manager
+        font_sizes = settings_manager.get_font_sizes()
+        self.source_list_size.setValue(font_sizes["source_list"])
+        self.source_header_size.setValue(font_sizes["source_header"])
+        self.content_size.setValue(font_sizes["content"])
+        self.search_size.setValue(font_sizes["search"])
+        self.title_size.setValue(font_sizes["title"])
+        
+        # Add to layout with labels
+        font_layout.addRow("Source Headers:", self.source_header_size)  # Add source headers control
+        font_layout.addRow("Source Items:", self.source_list_size)
+        font_layout.addRow("Content:", self.content_size)
+        font_layout.addRow("Search Box:", self.search_size)
+        font_layout.addRow("Titles:", self.title_size)
+        
+        appearance_layout.addWidget(font_group)
+        appearance_layout.addStretch()
+        
+        # Add tabs
+        tabs.addTab(appearance_tab, "Appearance")
+        layout.addWidget(tabs)
+        
+        # Buttons
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | 
+            QDialogButtonBox.StandardButton.Cancel |
+            QDialogButtonBox.StandardButton.Apply
+        )
+        button_box.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['code_bg']};
+                color: {COLORS['text']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 4px;
+                padding: 6px 16px;
+                min-width: 80px;
+            }}
+            QPushButton:hover {{
+                background-color: {COLORS['hover']};
+                border-color: {COLORS['accent']};
+            }}
+            QPushButton:pressed {{
+                background-color: {COLORS['selection']};
+            }}
+        """)
+        
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        button_box.button(QDialogButtonBox.StandardButton.Apply).clicked.connect(self.apply_settings)
+        
+        layout.addWidget(button_box)
+    
+    def apply_settings(self):
+        """Apply the current settings."""
+        # Update font sizes in settings manager
+        new_sizes = {
+            "source_list": self.source_list_size.value(),
+            "source_header": self.source_header_size.value(),
+            "content": self.content_size.value(),
+            "search": self.search_size.value(),
+            "title": self.title_size.value()
+        }
+        settings_manager.update_font_sizes(new_sizes)
+        
+        # Update fonts
+        DEFAULT_FONT.setPointSize(new_sizes["content"])
+        MONOSPACE_FONT.setPointSize(new_sizes["content"])
+        
+        # Apply changes to parent window
+        if self.parent:
+            # Update root items font size
+            for root_item in [self.parent.tldr_root, self.parent.cheatsh_root, self.parent.devhints_root]:
+                font = QFont("Inter", new_sizes["source_header"])
+                font.setBold(True)
+                root_item.setFont(0, font)
+            
+            # Update tree font
+            self.parent.tree.setStyleSheet(f"""
+                QTreeWidget {{
+                    background-color: {COLORS['sidebar']};
+                    border: none;
+                    font-family: 'Inter';
+                    font-size: {new_sizes["source_list"]}pt;
+                }}
+                QTreeWidget::item {{
+                    color: {COLORS['text']};
+                    padding: 2px 4px;
+                    margin: 0px;
+                }}
+                QTreeWidget::item:hover {{
+                    background-color: {COLORS['hover']};
+                }}
+                QTreeWidget::item:selected {{
+                    background-color: {COLORS['selection']};
+                    color: {COLORS['heading']};
+                }}
+            """)
+            
+            # Update search box font
+            self.parent.search_box.setStyleSheet(f"""
+                SearchBox {{
+                    background-color: {COLORS['background']};
+                    color: {COLORS['text']};
+                    border: 1px solid {COLORS['border']};
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                    font-family: 'Inter';
+                    font-size: {new_sizes["search"]}pt;
+                }}
+                SearchBox:focus {{
+                    border: 1px solid {COLORS['accent']};
+                }}
+            """)
+            
+            # Update content title font
+            self.parent.content_title.setStyleSheet(f"""
+                QLabel {{
+                    color: {COLORS['heading']};
+                    font-family: 'Inter';
+                    font-size: {new_sizes["title"]}pt;
+                    font-weight: bold;
+                    padding: 8px 0;
+                }}
+            """)
+            
+            # Update content view font
+            self.parent.content.setStyleSheet(f"""
+                QTextEdit {{
+                    background-color: {COLORS['background']};
+                    color: {COLORS['text']};
+                    border: none;
+                    font-family: 'JetBrains Mono';
+                    font-size: {new_sizes["content"]}pt;
+                    selection-background-color: {COLORS['selection']};
+                    selection-color: {COLORS['text']};
+                    padding: 0;
+                }}
+            """)
+            
+            # Refresh the content to apply new styles
+            current_content = self.parent.content.toHtml()
+            self.parent.content.clear()
+            self.parent.content.setHtml(current_content)
+    
+    def accept(self):
+        """Handle OK button click."""
+        self.apply_settings()
+        super().accept()
 
 def run_gui():
     """Run the GUI application."""
