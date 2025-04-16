@@ -9,7 +9,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QFrame)
 from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal, QRunnable, QThreadPool, QObject, QTimer, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import (QFont, QSyntaxHighlighter, QTextCharFormat, QColor,
-                        QAction, QIcon, QPainter, QPainterPath, QLinearGradient)
+                        QAction, QIcon, QPainter, QPainterPath, QLinearGradient, QKeySequence,
+                        QShortcut)
 from qt_material import apply_stylesheet
 import json
 import os
@@ -17,6 +18,7 @@ from pathlib import Path
 from .sources.tldr import TLDRSource
 from .sources.cheatsh import CheatShSource
 from .sources.devhints import DevhintsSource
+import pyperclip
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -347,14 +349,69 @@ class MainWindow(QMainWindow):
         icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "icons", "logo-64.png")
         if os.path.exists(icon_path):
             app_icon = QIcon(icon_path)
-            self.setWindowIcon(app_icon)  # Set window icon
-            if sys.platform == 'win32':  # Extra step for Windows taskbar
+            self.setWindowIcon(app_icon)
+            if sys.platform == 'win32':
                 import ctypes
-                myappid = 'elirancv.pydevcheat.1.0'  # arbitrary string
+                myappid = 'elirancv.pydevcheat.1.0'
                 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        
+        # Setup keyboard shortcuts
+        self.setup_shortcuts()
         
         self.init_ui()
         self.load_sources()
+
+    def setup_shortcuts(self):
+        """Setup keyboard shortcuts."""
+        # Search focus shortcut (Ctrl+F or Cmd+F)
+        self.search_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
+        self.search_shortcut.activated.connect(self.focus_search)
+        
+        # Clear search shortcut (Esc)
+        self.clear_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        self.clear_shortcut.activated.connect(self.clear_search)
+        
+        # Copy shortcut (Ctrl+C or Cmd+C)
+        self.copy_shortcut = QShortcut(QKeySequence.StandardKey.Copy, self)
+        self.copy_shortcut.activated.connect(self.copy_content)
+
+    def focus_search(self):
+        """Focus the search box."""
+        self.search_box.setFocus()
+        self.search_box.selectAll()
+
+    def copy_content(self):
+        """Copy selected content to clipboard."""
+        cursor = self.content.textCursor()
+        if cursor.hasSelection():
+            text = cursor.selectedText()
+        else:
+            text = self.content.toPlainText()
+        
+        if text:
+            pyperclip.copy(text)
+            self.statusBar().showMessage("Content copied to clipboard!", 2000)
+
+    def keyPressEvent(self, event):
+        """Handle keyboard events."""
+        if event.key() == Qt.Key.Key_Up:
+            # Navigate up in tree
+            current = self.tree.currentItem()
+            if current:
+                index = self.tree.indexAbove(self.tree.currentIndex())
+                if index.isValid():
+                    self.tree.setCurrentIndex(index)
+                    self.on_item_clicked(self.tree.itemFromIndex(index), 0)
+        elif event.key() == Qt.Key.Key_Down:
+            # Navigate down in tree
+            current = self.tree.currentItem()
+            if current:
+                index = self.tree.indexBelow(self.tree.currentIndex())
+                if index.isValid():
+                    self.tree.setCurrentIndex(index)
+                    self.on_item_clicked(self.tree.itemFromIndex(index), 0)
+        else:
+            super().keyPressEvent(event)
 
     def init_ui(self):
         """Initialize the user interface."""
@@ -613,7 +670,7 @@ Your ultimate programming companion for instant command lookups and code snippet
 • Type in the search box above to find commands
   Example: `git commit` or `docker run`
 • Browse categories in the sidebar
-• Right-click items to expand/collapse sections
+• Click any command to view details
 
 ## 📚 Available Sources
 • TLDR Pages
@@ -623,22 +680,24 @@ Your ultimate programming companion for instant command lookups and code snippet
 • DevHints
   Quick reference guides for developers
 
-## 💡 Pro Tips
-• Use specific terms for better results
-  Example: `python list comprehension`
-• Press Enter to search across all sources
-• Click any command for detailed usage
-
-## ⌨️ Shortcuts
+## ⌨️ Keyboard Shortcuts
 • Ctrl/Cmd + F: Focus search
 • Esc: Clear search
 • Up/Down: Navigate results
+• Ctrl/Cmd + C: Copy content
+
+## 💡 Pro Tips
+• Use specific terms for better results
+  Example: `python list comprehension`
+• Select text to copy specific parts
+• Right-click items for more options
+• Check the status bar for updates
 
 ──────────────────────────────────
 
 💻 Ready with {total_commands} commands at your fingertips!"""
 
-        # Update initial content
+        # Update initial content with total command count
         self.content.setPlainText(welcome_content.format(
             total_commands=self.get_total_commands()
         ))
@@ -721,6 +780,9 @@ Your ultimate programming companion for instant command lookups and code snippet
         
         sync_btn = create_action_button("↻", "Synchronize All Sources (Sync)", self.sync_all_sources)
         group_layout.addWidget(sync_btn)
+
+        copy_btn = create_action_button("⎘", "Copy Content (Ctrl+C)", self.copy_content)
+        group_layout.addWidget(copy_btn)
         
         # Add the button group to main layout
         layout.addWidget(button_group)
@@ -750,7 +812,7 @@ Your ultimate programming companion for instant command lookups and code snippet
 • Type in the search box above to find commands
   Example: `git commit` or `docker run`
 • Browse categories in the sidebar
-• Right-click items to expand/collapse sections
+• Click any command to view details
 
 ## 📚 Available Sources
 • TLDR Pages
@@ -760,22 +822,24 @@ Your ultimate programming companion for instant command lookups and code snippet
 • DevHints
   Quick reference guides for developers
 
-## 💡 Pro Tips
-• Use specific terms for better results
-  Example: `python list comprehension`
-• Press Enter to search across all sources
-• Click any command for detailed usage
-
-## ⌨️ Shortcuts
+## ⌨️ Keyboard Shortcuts
 • Ctrl/Cmd + F: Focus search
 • Esc: Clear search
 • Up/Down: Navigate results
+• Ctrl/Cmd + C: Copy content
+
+## 💡 Pro Tips
+• Use specific terms for better results
+  Example: `python list comprehension`
+• Select text to copy specific parts
+• Right-click items for more options
+• Check the status bar for updates
 
 ──────────────────────────────────
 
 💻 Ready with {total_commands} commands at your fingertips!"""
 
-        # Update initial content
+        # Update initial content with total command count
         self.content.setPlainText(welcome_content.format(
             total_commands=self.get_total_commands()
         ))
@@ -1145,56 +1209,56 @@ Your ultimate programming companion for instant command lookups and code snippet
             self.statusBar().showMessage(f"Error loading content: {str(e)}")
 
     def setup_content_display(self):
-        """Set up a modern content display area."""
-        self.content = QTextEdit()
-        self.content.setReadOnly(True)
-        self.content.setStyleSheet(f"""
-            QTextEdit {{
-                background-color: {COLORS['code_bg']};
-                color: {COLORS['text']};
-                border: 1px solid {COLORS['border']};
-                border-radius: 8px;
-                padding: 24px;
-                selection-background-color: {COLORS['selection']};
-                selection-color: {COLORS['text']};
-                font-family: 'JetBrains Mono';
-                font-size: 14px;
-                line-height: 1.6;
-            }}
-            QScrollBar:vertical {{
+        """Set up the content display area."""
+        content_container = QWidget()
+        content_layout = QVBoxLayout(content_container)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+
+        # Add title bar
+        title_container = QWidget()
+        title_container.setFixedHeight(44)
+        title_container.setStyleSheet(f"""
+            QWidget {{
                 background-color: {COLORS['background']};
-                width: 14px;
-                margin: 0;
-            }}
-            QScrollBar::handle:vertical {{
-                background-color: {COLORS['border']};
-                min-height: 30px;
-                border-radius: 7px;
-                margin: 2px;
-            }}
-            QScrollBar::handle:vertical:hover {{
-                background-color: {COLORS['hover']};
-            }}
-            QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical {{
-                height: 0;
-            }}
-            QScrollBar::up-arrow:vertical, QScrollBar::down-arrow:vertical {{
-                background: none;
-            }}
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
-                background: none;
+                border-bottom: 1px solid {COLORS['border']};
             }}
         """)
-        
-        # Set modern font
-        font = QFont("JetBrains Mono", 14)
-        font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
-        self.content.setFont(font)
-        
-        # Add syntax highlighter
+        title_layout = QHBoxLayout(title_container)
+        title_layout.setContentsMargins(16, 0, 16, 0)
+
+        self.content_title = QLabel("Welcome to PyDevCheat")
+        self.content_title.setStyleSheet(f"""
+            QLabel {{
+                color: {COLORS['text']};
+                font-family: 'Inter';
+                font-size: 14px;
+                font-weight: 600;
+            }}
+        """)
+        title_layout.addWidget(self.content_title)
+        title_layout.addStretch()
+
+        content_layout.addWidget(title_container)
+
+        # Create content text edit with syntax highlighting
+        self.content = QTextEdit()
+        self.content.setReadOnly(True)
         self.highlighter = SyntaxHighlighter(self.content.document())
-        
-        return self.content
+        self.content.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: {COLORS['background']};
+                color: {COLORS['text']};
+                border: none;
+                font-family: 'JetBrains Mono';
+                font-size: 13px;
+                selection-background-color: {COLORS['selection']};
+                selection-color: {COLORS['text']};
+            }}
+        """)
+        content_layout.addWidget(self.content)
+
+        return content_container
 
     def format_content(self, content: str) -> str:
         """Format the content for better display."""
