@@ -1,0 +1,12 @@
+[33mdb7a961[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m cleanup: Remove unused SVG files and conversion script
+[33m6e0733e[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m UI: Move copy button to toolbar and fix QShortcut import
+[33m3e63f68[m Setup PyPI publishing and GitHub Actions
+[33mcf9f937[m Initial commit: PyDevCheat - Your Ultimate Programming Companion
+[33m0c51fcd[m feat: Add application icons for window and taskbar
+[33m8a6b4d8[m Add icons and update README with proper branding
+[33m3aabd2b[m Initial commit: PyDevCheat - CLI Programming Companion
+[33m0f83c9c[m test: add basic test setup and development requirements
+[33m3ac1fb7[m ci: update workflow for PyPI trusted publisher
+[33mb610b5e[m docs: update repository links and author information
+[33m4ccae8f[m chore: update package metadata for PyPI publishing
+[33m696261d[m 🎉 Initial commit: PyDevCheat CLI tool
