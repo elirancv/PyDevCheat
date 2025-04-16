@@ -14,6 +14,7 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11"]
+      fail-fast: false  # Continue with other versions even if one fails
 
     steps:
     - uses: actions/checkout@v3
@@ -26,23 +27,34 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y qtbase5-dev
+        sudo apt-get install -y \
+          qtbase5-dev \
+          qttools5-dev-tools \
+          libxkbcommon-x11-0 \
+          libxcb-icccm4 \
+          libxcb-image0 \
+          libxcb-keysyms1 \
+          libxcb-randr0 \
+          libxcb-render-util0 \
+          libxcb-xinerama0 \
+          xvfb
     
-    - name: Install dependencies
+    - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install -e .
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
     
     - name: Run linting
       run: |
-        black . --check
-        flake8 .
+        black . --check --diff
+        flake8 . --count --show-source --statistics
       continue-on-error: true  # Make linting optional for now
     
-    - name: Run tests
+    - name: Run tests with xvfb
       run: |
-        pytest
+        xvfb-run --auto-servernum pytest -v --tb=short
       continue-on-error: true  # Make tests optional for now
 
   publish:
