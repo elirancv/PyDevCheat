@@ -1,8 +1,23 @@
-# 🚀 PyDevCheat
+# 🧠 PyDevCheat - Your CLI Programming Companion
+
+<div align="center">
+  <img src="assets/icons/logo-256.png" alt="PyDevCheat Logo" width="256"/>
+  <br>
+  <p>
+    <a href="https://pypi.org/project/pydevcheat/"><img src="https://img.shields.io/pypi/v/pydevcheat.svg" alt="PyPI version"></a>
+    <a href="https://pypi.org/project/pydevcheat/"><img src="https://img.shields.io/pypi/pyversions/pydevcheat.svg" alt="Python versions"></a>
+    <a href="https://github.com/elirancv/PyDevCheat/actions"><img src="https://github.com/elirancv/PyDevCheat/workflows/CI/badge.svg" alt="CI Status"></a>
+    <a href="https://codecov.io/gh/elirancv/PyDevCheat"><img src="https://codecov.io/gh/elirancv/PyDevCheat/branch/main/graph/badge.svg" alt="Code Coverage"></a>
+    <a href="https://github.com/elirancv/PyDevCheat/blob/main/LICENSE"><img src="https://img.shields.io/github/license/elirancv/PyDevCheat.svg" alt="License"></a>
+    <a href="https://github.com/elirancv/PyDevCheat/stargazers"><img src="https://img.shields.io/github/stars/elirancv/PyDevCheat.svg" alt="Stars"></a>
+  </p>
+</div>
 
 A powerful programming companion that combines a modern desktop application and CLI tool for instant access to commands, snippets, and cheat sheets. Built with Python and Qt, featuring both a sleek GUI and an efficient command-line interface.
 
-![PyDevCheat Screenshot](docs/screenshot.png)
+<div align="center">
+  <img src="docs/screenshot.png" alt="PyDevCheat Screenshot" width="800"/>
+</div>
 
 ## ✨ Features
 

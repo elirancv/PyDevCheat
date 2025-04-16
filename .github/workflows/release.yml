@@ -1,0 +1,28 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          generate_release_notes: true
+          files: |
+            assets/icons/logo-16.png
+            assets/icons/logo-32.png
+            assets/icons/logo-64.png
+            assets/icons/logo-128.png
+            assets/icons/logo-256.png
+            assets/icons/logo-512.png
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
