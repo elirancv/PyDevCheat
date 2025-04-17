@@ -9,50 +9,47 @@ from ..utils import create_retry_decorator, handle_source_error, NetworkError, S
 import json
 import requests
 
+
 class TLDRSource:
     """A source that fetches cheat sheets from the tldr-pages repository."""
-    
+
     # Create retry decorator for network requests
-    retry_request = create_retry_decorator(
-        max_attempts=3,
-        min_wait=1,
-        max_wait=10
-    )
-    
+    retry_request = create_retry_decorator(max_attempts=3, min_wait=1, max_wait=10)
+
     def __init__(self, cache_dir: Optional[Path] = None):
         """Initialize the TLDRSource."""
         self.base_url = "https://raw.githubusercontent.com/tldr-pages/tldr/master/pages"
-        self.cache_dir = cache_dir if cache_dir else Path.home() / '.pydevcheat' / 'cache' / 'tldr'
+        self.cache_dir = cache_dir if cache_dir else Path.home() / ".pydevcheat" / "cache" / "tldr"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_file = self.cache_dir / 'tldr_cache.json'
+        self.cache_file = self.cache_dir / "tldr_cache.json"
         self._load_cache()
         self.local_path = self.cache_dir / "pages"
         self.command_cache = {}
-        
+
         # Create directory if it doesn't exist
         self.local_path.mkdir(parents=True, exist_ok=True)
-    
+
     def _load_cache(self):
         """Load the cache from disk."""
         if self.cache_file.exists():
             try:
-                with open(self.cache_file, 'r') as f:
+                with open(self.cache_file, "r") as f:
                     self.cache = json.load(f)
             except (json.JSONDecodeError, IOError):
                 self.cache = {}
         else:
             self.cache = {}
-    
+
     def _save_cache(self):
         """Save the cache to disk."""
         try:
             # Ensure parent directory exists
             self.cache_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.cache_file, 'w') as f:
+            with open(self.cache_file, "w") as f:
                 json.dump(self.cache, f)
         except IOError:
             pass
-    
+
     @retry_request
     def _make_request(self, url: str) -> str:
         """Make a retryable HTTP request."""
@@ -61,7 +58,7 @@ class TLDRSource:
             return response.text
         response.raise_for_status()
         return response.text
-    
+
     def ensure_repo(self) -> bool:
         """Ensure the TLDR repository exists and is up to date."""
         try:
@@ -70,7 +67,7 @@ class TLDRSource:
                 subprocess.run(
                     ["git", "clone", "https://github.com/tldr-pages/tldr.git", "."],
                     cwd=self.local_path,
-                    check=True
+                    check=True,
                 )
                 return True
             else:
@@ -80,34 +77,34 @@ class TLDRSource:
         except Exception as e:
             handle_source_error("tldr", e)
             return False
-    
+
     def search(self, query: str) -> Optional[str]:
         """
         Search for a cheatsheet by query and return its contents.
         Returns None if no results found or error occurs.
-        
+
         Args:
             query: The command to search for
-            
+
         Returns:
             The formatted content of the cheatsheet, or None if not found
-            
+
         Raises:
             NetworkError: If a network error occurs
             SourceError: If a source-specific error occurs
         """
         # Clean up query
         query = query.lower().strip()
-        
+
         # Check cache first
         if query in self.cache:
             return self.cache[query]
-            
+
         # Try different platforms
-        platforms = ['common', 'linux', 'windows', 'osx', 'sunos']
+        platforms = ["common", "linux", "windows", "osx", "sunos"]
         content = None
         last_error = None
-        
+
         for platform in platforms:
             url = f"{self.base_url}/{platform}/{query}.md"
             try:
@@ -116,63 +113,63 @@ class TLDRSource:
             except Exception as e:
                 last_error = e
                 continue
-                
+
         if not content:
             if last_error:
                 raise NetworkError(f"Failed to fetch content: {str(last_error)}")
             return None
-            
+
         # Parse and format the content
         formatted_content = self._format_content(content)
         if formatted_content:
             self.cache[query] = formatted_content
             self._save_cache()
-            
+
         return formatted_content
-    
+
     def _format_content(self, content: str) -> str:
         """Format the content of the cheat sheet."""
-        lines = content.split('\n')
+        lines = content.split("\n")
         result = []
         current_description = None
         current_example = None
-        
+
         print("Parsing markdown content:")
         for line in lines:
             line = line.strip()
             if not line:
                 continue
-                
+
             print(f"Processing line: {line}")
-            if line.startswith('# '):
+            if line.startswith("# "):
                 # Add the title
                 result.append(line)
                 print(f"Added title: {line}")
-            elif line.startswith('> '):
+            elif line.startswith("> "):
                 # Description line
                 desc = line[2:].strip()
-                if desc.startswith('More information:'):
+                if desc.startswith("More information:"):
                     continue
                 current_description = desc
                 print(f"Set description: {desc}")
-            elif line.startswith('- '):
+            elif line.startswith("- "):
                 # Example description
                 current_example = line[2:].strip()
                 # Remove trailing colon if present
-                if current_example.endswith(':'):
+                if current_example.endswith(":"):
                     current_example = current_example[:-1].strip()
                 print(f"Set example description: {current_example}")
-            elif line.startswith('`'):
+            elif line.startswith("`"):
                 # Command line
-                cmd = line.strip('`')
+                cmd = line.strip("`")
                 # Clean up command
-                cmd = re.sub(r'{{(.*?)}}', r'\1', cmd)
+                cmd = re.sub(r"{{(.*?)}}", r"\1", cmd)
                 # Remove any remaining curly braces
-                cmd = re.sub(r'[{}]', '', cmd).strip()
+                cmd = re.sub(r"[{}]", "", cmd).strip()
                 # Remove any remaining spaces
-                cmd = ' '.join(cmd.split())
+                cmd = " ".join(cmd.split())
                 print(f"Cleaned command: {cmd}")
-                
+
                 if current_example:
                     result.append(f"{cmd}  # {current_example}")
                     print(f"Added command with description: {cmd}  # {current_example}")
@@ -180,22 +177,22 @@ class TLDRSource:
                 else:
                     result.append(cmd)
                     print(f"Added command without description: {cmd}")
-        
-        final_result = '\n'.join(result)
+
+        final_result = "\n".join(result)
         print(f"Final parsed result:\n{final_result}")
         return final_result
-    
+
     def list_all_commands(self) -> Dict[str, str]:
         """List all available commands from TLDR pages."""
         # Try to ensure we have the repository
         if not (self.local_path / ".git").exists():
             if not self.ensure_repo():
                 return {}
-            
+
         # Get all commands from all platforms
         all_commands = {}
         platforms = ["common", "linux", "windows", "osx"]
-        
+
         for platform in platforms:
             platform_dir = self.local_path / "pages" / platform
             if platform_dir.exists():
@@ -207,9 +204,9 @@ class TLDRSource:
                         all_commands[command] = f"{all_commands[command]}, {platform}"
                     else:
                         all_commands[command] = platform
-                        
+
         return all_commands
-    
+
     def sync(self) -> bool:
         """Sync TLDR pages locally."""
         return self.ensure_repo()
@@ -220,21 +217,21 @@ class TLDRSource:
             # Check if local repository exists
             if not self.local_path.exists():
                 return False
-                
+
             # Check if pages directory exists
             pages_dir = self.local_path / "pages"
             if not pages_dir.exists():
                 return False
-                
+
             # Check if common platforms are present
             platforms = ["common", "linux", "windows", "osx"]
             for platform in platforms:
                 platform_dir = pages_dir / platform
                 if not platform_dir.exists():
                     return False
-                    
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Error checking sync status: {e}")
             return False
@@ -244,29 +241,31 @@ class TLDRSource:
         # Get all available commands
         if not self.command_cache:
             self._build_command_cache()
-        
+
         # Try to find close matches
         query_parts = query.split()
         if len(query_parts) > 1:
             command = query_parts[0]
         else:
             command = query
-            
+
         matches = get_close_matches(command, self.command_cache.keys(), n=3, cutoff=0.6)
-        
+
         if matches:
             result = ["# No exact match found. Did you mean:"]
             for match in matches:
                 result.append(f"# - {match}")
-            result.append("\n# Try one of these commands or use '--source cheatsh' for more results")
+            result.append(
+                "\n# Try one of these commands or use '--source cheatsh' for more results"
+            )
             return "\n".join(result)
-            
+
         return f"# No matches found for '{query}'\n# Try searching with a different term or use '--source cheatsh'"
 
     def save_cache(self, cache_data=None):
         """
         Save the cache to disk.
-        
+
         Args:
             cache_data: Optional dictionary of data to save. If None, saves the current cache.
         """
@@ -274,17 +273,17 @@ class TLDRSource:
             if cache_data is not None:
                 self.cache = cache_data
             self.cache_dir.mkdir(parents=True, exist_ok=True)
-            with open(self.cache_file, 'w') as f:
+            with open(self.cache_file, "w") as f:
                 json.dump(self.cache, f)
         except IOError:
-            pass  # Silently handle permission errors 
+            pass  # Silently handle permission errors
 
     def load_cache(self) -> Dict:
         """Load the cache from disk."""
         if self.cache_file.exists():
             try:
-                with open(self.cache_file, 'r') as f:
+                with open(self.cache_file, "r") as f:
                     return json.load(f)
             except (json.JSONDecodeError, IOError):
                 return {}
-        return {} 
+        return {}

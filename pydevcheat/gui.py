@@ -2,16 +2,63 @@ import sys
 import re
 import logging
 from typing import Dict, List, Optional
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                            QHBoxLayout, QLineEdit, QTreeWidget, QTreeWidgetItem,
-                            QTextEdit, QSplitter, QLabel, QPushButton, QMessageBox,
-                            QProgressBar, QStatusBar, QToolBar, QMenu, QStyledItemDelegate,
-                            QFrame, QComboBox, QTabWidget, QTabBar, QGroupBox, QFormLayout,
-                            QSpinBox, QDialogButtonBox, QDialog)
-from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal, QRunnable, QThreadPool, QObject, QTimer, QPropertyAnimation, QEasingCurve, QRect, pyqtProperty
-from PyQt6.QtGui import (QFont, QSyntaxHighlighter, QTextCharFormat, QColor,
-                        QAction, QIcon, QPainter, QPainterPath, QLinearGradient, QKeySequence,
-                        QShortcut, QPixmap)
+from PyQt6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLineEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QTextEdit,
+    QSplitter,
+    QLabel,
+    QPushButton,
+    QMessageBox,
+    QProgressBar,
+    QStatusBar,
+    QToolBar,
+    QMenu,
+    QStyledItemDelegate,
+    QFrame,
+    QComboBox,
+    QTabWidget,
+    QTabBar,
+    QGroupBox,
+    QFormLayout,
+    QSpinBox,
+    QDialogButtonBox,
+    QDialog,
+)
+from PyQt6.QtCore import (
+    Qt,
+    QSize,
+    QThread,
+    pyqtSignal,
+    QRunnable,
+    QThreadPool,
+    QObject,
+    QTimer,
+    QPropertyAnimation,
+    QEasingCurve,
+    QRect,
+    pyqtProperty,
+)
+from PyQt6.QtGui import (
+    QFont,
+    QSyntaxHighlighter,
+    QTextCharFormat,
+    QColor,
+    QAction,
+    QIcon,
+    QPainter,
+    QPainterPath,
+    QLinearGradient,
+    QKeySequence,
+    QShortcut,
+    QPixmap,
+)
 import json
 import os
 from pathlib import Path
@@ -28,39 +75,43 @@ logger = logging.getLogger(__name__)
 
 # Modern color scheme inspired by popular IDEs and tools
 COLORS = {
-    'background': '#0d1117',     # GitHub Dark theme background
-    'sidebar': '#161b22',        # Slightly lighter background for sidebar
-    'text': '#e6edf3',          # Bright text color
-    'text_muted': '#8b949e',    # Muted text for secondary information
-    'accent': '#58a6ff',        # Bright blue accent
-    'accent_secondary': '#bc8cff',  # Purple accent for variety
-    'border': '#30363d',        # Subtle border color
-    'hover': '#1f2937',         # Hover state background
-    'selection': '#2d3847',     # Selection background
-    'code_bg': '#1f2428',       # Code block background
-    'link': '#58a6ff',          # Link color
-    'heading': '#e6edf3',       # Heading color
-    'success': '#3fb950',       # Success green
-    'warning': '#d29922',       # Warning orange
-    'error': '#f85149',         # Error red
-    'gradient_start': '#58a6ff', # Start of gradients
-    'gradient_end': '#bc8cff',   # End of gradients
-    'accent-hover': '#75a9ff',   # Hover state for accent button
-    'accent-pressed': '#3f86e0', # Pressed state for accent button
-    'background-light': '#242933', # Light background for search box
-    'background-lighter': '#2d333e', # Even lighter background for search box
-    'text-light': '#94a0b4',    # Light text color for search box
+    "background": "#0d1117",  # GitHub Dark theme background
+    "sidebar": "#161b22",  # Slightly lighter background for sidebar
+    "text": "#e6edf3",  # Bright text color
+    "text_muted": "#8b949e",  # Muted text for secondary information
+    "accent": "#58a6ff",  # Bright blue accent
+    "accent_secondary": "#bc8cff",  # Purple accent for variety
+    "border": "#30363d",  # Subtle border color
+    "hover": "#1f2937",  # Hover state background
+    "selection": "#2d3847",  # Selection background
+    "code_bg": "#1f2428",  # Code block background
+    "link": "#58a6ff",  # Link color
+    "heading": "#e6edf3",  # Heading color
+    "success": "#3fb950",  # Success green
+    "warning": "#d29922",  # Warning orange
+    "error": "#f85149",  # Error red
+    "gradient_start": "#58a6ff",  # Start of gradients
+    "gradient_end": "#bc8cff",  # End of gradients
+    "accent-hover": "#75a9ff",  # Hover state for accent button
+    "accent-pressed": "#3f86e0",  # Pressed state for accent button
+    "background-light": "#242933",  # Light background for search box
+    "background-lighter": "#2d333e",  # Even lighter background for search box
+    "text-light": "#94a0b4",  # Light text color for search box
 }
+
 
 class WorkerSignals(QObject):
     """Defines the signals available from a running worker thread."""
+
     finished = pyqtSignal()
     error = pyqtSignal(tuple)
     result = pyqtSignal(object)
     progress = pyqtSignal(str)  # Added progress signal for status updates
 
+
 class Worker(QRunnable):
     """Worker thread for handling background tasks."""
+
     def __init__(self, fn, *args, **kwargs):
         super().__init__()
         self.fn = fn
@@ -82,43 +133,49 @@ class Worker(QRunnable):
         """Safely emit progress signal."""
         self.signals.progress.emit(message)
 
+
 class SyncWorker(Worker):
     """Specialized worker for sync operations."""
+
     def run(self):
         try:
-            results = {
-                'tldr': False,
-                'cheatsh': False,
-                'devhints': False
-            }
-            
+            results = {"tldr": False, "cheatsh": False, "devhints": False}
+
             # TLDR Pages sync
             try:
                 self.update_progress("Downloading TLDR Pages repository...")
-                results['tldr'] = self.fn.tldr_source.sync()
+                results["tldr"] = self.fn.tldr_source.sync()
                 self.update_progress("TLDR Pages synchronized successfully")
             except Exception as e:
                 logger.error(f"Error syncing TLDR: {e}")
                 self.update_progress(f"Error syncing TLDR: {str(e)}")
-            
+
             # Cheat.sh sync
             try:
                 self.update_progress("Updating Cheat.sh cache...")
-                results['cheatsh'] = self.fn.cheatsh_source.sync() if hasattr(self.fn.cheatsh_source, 'sync') else True
+                results["cheatsh"] = (
+                    self.fn.cheatsh_source.sync()
+                    if hasattr(self.fn.cheatsh_source, "sync")
+                    else True
+                )
                 self.update_progress("Cheat.sh cache updated")
             except Exception as e:
                 logger.error(f"Error syncing Cheat.sh: {e}")
                 self.update_progress(f"Error syncing Cheat.sh: {str(e)}")
-            
+
             # DevHints sync
             try:
                 self.update_progress("Refreshing DevHints content...")
-                results['devhints'] = self.fn.devhints_source.sync() if hasattr(self.fn.devhints_source, 'sync') else True
+                results["devhints"] = (
+                    self.fn.devhints_source.sync()
+                    if hasattr(self.fn.devhints_source, "sync")
+                    else True
+                )
                 self.update_progress("DevHints content refreshed")
             except Exception as e:
                 logger.error(f"Error syncing DevHints: {e}")
                 self.update_progress(f"Error syncing DevHints: {str(e)}")
-            
+
             self.signals.result.emit(results)
         except Exception as e:
             logger.error(f"Error in sync worker: {str(e)}")
@@ -133,21 +190,20 @@ class SyncWorker(Worker):
             self.progress.setVisible(True)
             self.progress.setRange(0, 6)  # 2 steps per source
             self.progress.setValue(0)
-            
+
             # Create and start sync worker
             worker = SyncWorker(self)
             worker.signals.progress.connect(self.on_sync_progress)
             worker.signals.result.connect(self.on_sync_complete)
             worker.signals.error.connect(self.on_sync_error)
-            
+
             self.threadpool.start(worker)
-            
+
         except Exception as e:
             logger.error(f"Error starting sync: {e}")
             self.statusBar().showMessage(f"Error starting sync: {str(e)}")
             self.progress.setVisible(False)
-            QMessageBox.warning(self, "Sync Error",
-                              f"Failed to start sync: {str(e)}")
+            QMessageBox.warning(self, "Sync Error", f"Failed to start sync: {str(e)}")
 
     def on_sync_progress(self, message):
         """Handle sync progress updates."""
@@ -159,20 +215,25 @@ class SyncWorker(Worker):
         """Handle successful sync of all sources."""
         success_count = sum(1 for result in results.values() if result)
         total_count = len(results)
-        
+
         if success_count == total_count:
             self.statusBar().showMessage("✓ All sources synchronized successfully")
         else:
             failed_sources = [source for source, result in results.items() if not result]
-            self.statusBar().showMessage(f"⚠ Sync completed with errors ({success_count}/{total_count} sources)")
-            
+            self.statusBar().showMessage(
+                f"⚠ Sync completed with errors ({success_count}/{total_count} sources)"
+            )
+
             # Show detailed message if there were any failures
             if success_count < total_count:
-                QMessageBox.warning(self, "Sync Warning",
-                                  f"Failed to sync: {', '.join(failed_sources)}\nCheck the logs for details.")
-        
+                QMessageBox.warning(
+                    self,
+                    "Sync Warning",
+                    f"Failed to sync: {', '.join(failed_sources)}\nCheck the logs for details.",
+                )
+
         self.progress.setVisible(False)
-        
+
         # Reload sources after successful sync
         if success_count > 0:
             self.statusBar().showMessage("Reloading sources after sync...")
@@ -184,22 +245,26 @@ class SyncWorker(Worker):
         logger.error(f"Error during sync: {error_msg}")
         self.statusBar().showMessage(f"✕ Sync failed: {error_msg}")
         self.progress.setVisible(False)
-        QMessageBox.critical(self, "Sync Error",
-                           f"Sync failed: {error_msg}\nCheck the logs for details.")
+        QMessageBox.critical(
+            self, "Sync Error", f"Sync failed: {error_msg}\nCheck the logs for details."
+        )
+
 
 class SyntaxHighlighter(QSyntaxHighlighter):
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         # Create formats with the correct font size
         self.formats = {
-            'command': self._create_format(UI_CONFIG["colors"]["highlight"], True),
-            'description': self._create_format(UI_CONFIG["colors"]["text"]),
-            'example': self._create_format(UI_CONFIG["colors"]["accent"]),
-            'comment': self._create_format('#7c7f93', italic=True),  # Muted color for comments
-            'section': self._create_format(UI_CONFIG["colors"]["highlight"], True, size_adjust=1)  # Slightly larger
+            "command": self._create_format(UI_CONFIG["colors"]["highlight"], True),
+            "description": self._create_format(UI_CONFIG["colors"]["text"]),
+            "example": self._create_format(UI_CONFIG["colors"]["accent"]),
+            "comment": self._create_format("#7c7f93", italic=True),  # Muted color for comments
+            "section": self._create_format(
+                UI_CONFIG["colors"]["highlight"], True, size_adjust=1
+            ),  # Slightly larger
         }
-        
+
     def _create_format(self, color, bold=False, italic=False, size_adjust=0):
         fmt = QTextCharFormat()
         fmt.setForeground(QColor(color))
@@ -211,26 +276,27 @@ class SyntaxHighlighter(QSyntaxHighlighter):
         font_size = UI_CONFIG["font_sizes"]["content"] + size_adjust
         fmt.setFontPointSize(font_size)
         return fmt
-        
+
     def highlightBlock(self, text):
         # Highlight section headers
-        if text.startswith('#'):
-            self.setFormat(0, len(text), self.formats['section'])
+        if text.startswith("#"):
+            self.setFormat(0, len(text), self.formats["section"])
             return
-            
+
         # Highlight commands and descriptions
-        if '#' in text:
-            command, description = text.split('#', 1)
+        if "#" in text:
+            command, description = text.split("#", 1)
             # Highlight command
-            self.setFormat(0, len(command), self.formats['command'])
+            self.setFormat(0, len(command), self.formats["command"])
             # Highlight description
-            self.setFormat(len(command) + 1, len(description), self.formats['description'])
+            self.setFormat(len(command) + 1, len(description), self.formats["description"])
         else:
             # If no #, treat as example or regular text
-            if text.strip().startswith('$') or text.strip().startswith('>'):
-                self.setFormat(0, len(text), self.formats['example'])
+            if text.strip().startswith("$") or text.strip().startswith(">"):
+                self.setFormat(0, len(text), self.formats["example"])
             else:
-                self.setFormat(0, len(text), self.formats['description'])
+                self.setFormat(0, len(text), self.formats["description"])
+
 
 class ModernProgressBar(QProgressBar):
     def __init__(self, parent=None):
@@ -240,7 +306,8 @@ class ModernProgressBar(QProgressBar):
         self.animation = QPropertyAnimation(self, b"value")
         self.animation.setEasingCurve(QEasingCurve.Type.InOutQuart)
         self.animation.setDuration(1000)
-        self.setStyleSheet(f"""
+        self.setStyleSheet(
+            f"""
             QProgressBar {{
                 background-color: {COLORS['code_bg']};
                 border: none;
@@ -250,12 +317,14 @@ class ModernProgressBar(QProgressBar):
                 background-color: {COLORS['accent']};
                 border-radius: 1px;
             }}
-        """)
+        """
+        )
 
     def setProgress(self, value):
         self.animation.setStartValue(self.value())
         self.animation.setEndValue(value)
         self.animation.start()
+
 
 class LoadingLabel(QLabel):
     def __init__(self, text="", parent=None):
@@ -265,14 +334,16 @@ class LoadingLabel(QLabel):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_dots)
         self.timer.start(500)
-        self.setStyleSheet(f"""
+        self.setStyleSheet(
+            f"""
             QLabel {{
                 color: {COLORS['text_muted']};
                 font-family: 'Inter';
                 font-size: 12px;
                 padding: 4px 8px;
             }}
-        """)
+        """
+        )
 
     def update_dots(self):
         self.dots = (self.dots + 1) % 4
@@ -285,11 +356,13 @@ class LoadingLabel(QLabel):
     def stop(self):
         self.timer.stop()
 
+
 class ModernButton(QPushButton):
     def __init__(self, text="", parent=None):
         super().__init__(text, parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet(f"""
+        self.setStyleSheet(
+            f"""
             QPushButton {{
                 background-color: {COLORS['accent']};
                 color: {COLORS['text']};
@@ -304,13 +377,16 @@ class ModernButton(QPushButton):
             QPushButton:pressed {{
                 background-color: {COLORS['accent-pressed']};
             }}
-        """)
+        """
+        )
+
 
 class SearchBox(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setPlaceholderText("Search commands (e.g., 'git commit', 'python list')...")
-        self.setStyleSheet(f"""
+        self.setStyleSheet(
+            f"""
             SearchBox {{
                 background-color: {COLORS['code_bg']};
                 color: {COLORS['text']};
@@ -325,49 +401,54 @@ class SearchBox(QLineEdit):
                 border: 1px solid {COLORS['accent']};
                 background-color: {COLORS['background']};
             }}
-        """)
+        """
+        )
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.threadpool = QThreadPool()
         logger.debug(f"Multithreading with maximum {self.threadpool.maxThreadCount()} threads")
-        
+
         # Initialize state
         self.sources_loaded = False
         self.loading_complete_count = 0
-        
+
         # Load settings
         self.font_sizes = settings_manager.get_font_sizes()
-        
+
         # Update default fonts with loaded settings
         DEFAULT_FONT.setPointSize(self.font_sizes["content"])
         MONOSPACE_FONT.setPointSize(self.font_sizes["content"])
-        
+
         # Store references to loading widgets
         self.loading_widgets = {}
-        
+
         # Initialize sources
         self.tldr_source = TLDRSource()
         self.cheatsh_source = CheatShSource()
         self.devhints_source = DevhintsSource()
-        
+
         # Set window icon and logo path
-        self.logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "icons", "logo-64.png")
+        self.logo_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "assets", "icons", "logo-64.png"
+        )
         if os.path.exists(self.logo_path):
             app_icon = QIcon(self.logo_path)
             self.setWindowIcon(app_icon)
-            if sys.platform == 'win32':
+            if sys.platform == "win32":
                 import ctypes
-                myappid = 'elirancv.pydevcheat.1.0'
+
+                myappid = "elirancv.pydevcheat.1.0"
                 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-        
+
         # Setup keyboard shortcuts
         self.setup_shortcuts()
-        
+
         self.init_ui()
         self.load_sources()
-        
+
         # Set initial window state to maximized
         self.setWindowState(Qt.WindowState.WindowMaximized)
 
@@ -376,11 +457,11 @@ class MainWindow(QMainWindow):
         # Search focus shortcut (Ctrl+F or Cmd+F)
         self.search_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
         self.search_shortcut.activated.connect(self.focus_search)
-        
+
         # Clear search shortcut (Esc)
         self.clear_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         self.clear_shortcut.activated.connect(self.clear_search)
-        
+
         # Copy shortcut (Ctrl+C or Cmd+C)
         self.copy_shortcut = QShortcut(QKeySequence.StandardKey.Copy, self)
         self.copy_shortcut.activated.connect(self.copy_content)
@@ -391,7 +472,7 @@ class MainWindow(QMainWindow):
         self.search_box.selectAll()
         # Get current source counts
         counts = self.get_total_commands()
-        count_data = counts['counts']
+        count_data = counts["counts"]
         self.statusBar().showMessage(
             f"Ready to search ({count_data['total']} commands available - "
             f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
@@ -404,12 +485,12 @@ class MainWindow(QMainWindow):
             text = cursor.selectedText()
         else:
             text = self.content.toPlainText()
-        
+
         if text:
             pyperclip.copy(text)
             # Get current source counts
             counts = self.get_total_commands()
-            count_data = counts['counts']
+            count_data = counts["counts"]
             self.statusBar().showMessage(
                 f"Content copied to clipboard! ({count_data['total']} commands available - "
                 f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
@@ -440,11 +521,11 @@ class MainWindow(QMainWindow):
         """Initialize the user interface."""
         self.setWindowTitle("PyDevCheat - Your Programming Companion")
         self.setMinimumSize(800, 600)
-        
+
         # Set application-wide font
         app_font = QFont("Inter", self.font_sizes["content"])
         QApplication.setFont(app_font)
-        
+
         # Create central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -458,25 +539,29 @@ class MainWindow(QMainWindow):
         # Create main splitter
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(1)
-        splitter.setStyleSheet(f"""
+        splitter.setStyleSheet(
+            f"""
             QSplitter::handle {{
                 background-color: {COLORS['border']};
             }}
             QSplitter::handle:hover {{
                 background-color: {COLORS['accent']};
             }}
-        """)
+        """
+        )
 
         # Create sidebar
         sidebar = QWidget()
         sidebar.setMinimumWidth(280)
         sidebar.setMaximumWidth(320)
-        sidebar.setStyleSheet(f"""
+        sidebar.setStyleSheet(
+            f"""
             QWidget {{
                 background-color: {COLORS['sidebar']};
                 border-right: 1px solid {COLORS['border']};
             }}
-        """)
+        """
+        )
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_layout.setSpacing(0)
@@ -499,7 +584,8 @@ class MainWindow(QMainWindow):
         self.tree.itemClicked.connect(self.on_item_clicked)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_tree_context_menu)
-        self.tree.setStyleSheet(f"""
+        self.tree.setStyleSheet(
+            f"""
             QTreeWidget {{
                 background-color: {COLORS['sidebar']};
                 border: none;
@@ -555,7 +641,8 @@ class MainWindow(QMainWindow):
                 background: none;
                 height: 0px;
             }}
-        """)
+        """
+        )
         sidebar_layout.addWidget(self.tree)
 
         # Initialize root items with minimal styling
@@ -584,9 +671,9 @@ class MainWindow(QMainWindow):
             loading_item = QTreeWidgetItem(parent)
             self.tree.setItemWidget(loading_item, 0, loading_label)
             self.loading_widgets[source_name] = {
-                'label': loading_label,
-                'item': loading_item,
-                'parent': parent
+                "label": loading_label,
+                "item": loading_item,
+                "parent": parent,
             }
             return loading_item
 
@@ -597,35 +684,44 @@ class MainWindow(QMainWindow):
         # Create content area
         content_area = QWidget()
         content_area.setMinimumWidth(400)
-        content_area.setStyleSheet(f"""
+        content_area.setStyleSheet(
+            f"""
             QWidget {{
                 background-color: {COLORS['background']};
             }}
-        """)
+        """
+        )
         content_layout = QVBoxLayout(content_area)
         content_layout.setContentsMargins(16, 0, 16, 16)  # Removed top margin
         content_layout.setSpacing(8)  # Reduced spacing between elements
 
         # Add title
         self.content_title = QLabel("")
-        self.content_title.setStyleSheet("QLabel { color: " + COLORS['text'] + "; font-family: Inter; font-size: 14px; font-weight: bold; }")
+        self.content_title.setStyleSheet(
+            "QLabel { color: "
+            + COLORS["text"]
+            + "; font-family: Inter; font-size: 14px; font-weight: bold; }"
+        )
         content_layout.addWidget(self.content_title)
-        
+
         # Add content display
         content_display = self.setup_content_display()
         content_layout.addWidget(content_display)
-        
+
         # Add panels to splitter
         splitter.addWidget(sidebar)
         splitter.addWidget(content_area)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        
+
         layout.addWidget(splitter)
 
         # Create status bar with initial loading message
-        self.statusBar().showMessage("Loading sources... (0 commands available - TLDR: 0, Cheat.sh: 0, DevHints: 0)")
-        self.statusBar().setStyleSheet(f"""
+        self.statusBar().showMessage(
+            "Loading sources... (0 commands available - TLDR: 0, Cheat.sh: 0, DevHints: 0)"
+        )
+        self.statusBar().setStyleSheet(
+            f"""
             QStatusBar {{
                 background-color: {COLORS['sidebar']};
                 color: {COLORS['text_muted']};
@@ -634,7 +730,8 @@ class MainWindow(QMainWindow):
                 font-family: 'Inter';
                 font-size: 12px;
             }}
-        """)
+        """
+        )
 
         # Show welcome screen
         self.show_home_screen()
@@ -644,21 +741,23 @@ class MainWindow(QMainWindow):
         toolbar = QToolBar()
         toolbar.setMovable(False)
         toolbar.setFixedHeight(48)
-         
+
         # Create main container with gradient background
         container = QWidget()
         container.setFixedHeight(48)
-        container.setStyleSheet(f"""
+        container.setStyleSheet(
+            f"""
             QWidget {{
                 background-color: {COLORS['background']};
                 border-bottom: 1px solid {COLORS['border']};
             }}
-        """)
-         
+        """
+        )
+
         layout = QHBoxLayout(container)
         layout.setContentsMargins(16, 0, 16, 0)
         layout.setSpacing(8)
-         
+
         # Create logo section
         logo_container = QWidget()
         logo_layout = QHBoxLayout(logo_container)
@@ -668,13 +767,21 @@ class MainWindow(QMainWindow):
         # Add app icon/logo
         logo_label = QLabel()
         logo_pixmap = QPixmap(self.logo_path)
-        logo_label.setPixmap(logo_pixmap.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        logo_label.setPixmap(
+            logo_pixmap.scaled(
+                20,
+                20,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
         logo_label.setStyleSheet("QLabel { padding: 0; background: transparent; }")
         logo_layout.addWidget(logo_label)
 
         # Add app name
         app_name = QLabel("PyDevCheat")
-        app_name.setStyleSheet(f"""
+        app_name.setStyleSheet(
+            f"""
             QLabel {{
                 color: {COLORS['text']};
                 font-family: 'Inter';
@@ -682,23 +789,26 @@ class MainWindow(QMainWindow):
                 font-weight: bold;
                 background: transparent;
             }}
-        """)
+        """
+        )
         logo_layout.addWidget(app_name)
         layout.addWidget(logo_container)
 
         # Create button container with subtle background
         button_container = QWidget()
-        button_container.setStyleSheet(f"""
+        button_container.setStyleSheet(
+            f"""
             QWidget {{
                 background-color: {COLORS['sidebar']};
                 border-radius: 8px;
                 padding: 4px;
             }}
-        """)
+        """
+        )
         button_layout = QHBoxLayout(button_container)
         button_layout.setContentsMargins(4, 0, 4, 0)
         button_layout.setSpacing(4)
-        
+
         # Create and add buttons with modern icons
         class ModernToolButton(QPushButton):
             def __init__(self, icon, tooltip, parent=None):
@@ -706,7 +816,8 @@ class MainWindow(QMainWindow):
                 self.setFixedSize(32, 32)
                 self.setText(icon)
                 self.setToolTip(tooltip)
-                self.setStyleSheet(f"""
+                self.setStyleSheet(
+                    f"""
                     QPushButton {{
                         background-color: transparent;
                         color: {COLORS['text_muted']};
@@ -724,17 +835,18 @@ class MainWindow(QMainWindow):
                         background-color: {COLORS['selection']};
                         color: {COLORS['accent']};
                     }}
-                """)
-        
+                """
+                )
+
         # Add left side buttons
         home_btn = ModernToolButton("⌂", "Home (Welcome Screen)")
         home_btn.clicked.connect(self.show_home_screen)
         button_layout.addWidget(home_btn)
-        
+
         refresh_btn = ModernToolButton("↻", "Refresh (Reload Commands)")
         refresh_btn.clicked.connect(self.load_sources)
         button_layout.addWidget(refresh_btn)
-        
+
         sync_btn = ModernToolButton("⟳", "Sync (Update Sources)")
         sync_btn.clicked.connect(self.sync_all_sources)
         button_layout.addWidget(sync_btn)
@@ -742,7 +854,7 @@ class MainWindow(QMainWindow):
         copy_btn = ModernToolButton("⎘", "Copy (Ctrl+C)")
         copy_btn.clicked.connect(self.copy_content)
         button_layout.addWidget(copy_btn)
-        
+
         # Add the button container to main layout
         layout.addWidget(button_container)
 
@@ -757,18 +869,21 @@ class MainWindow(QMainWindow):
         search_layout.setSpacing(0)
 
         search_wrapper = QWidget()
-        search_wrapper.setStyleSheet(f"""
+        search_wrapper.setStyleSheet(
+            f"""
             QWidget {{
                 background-color: {COLORS['sidebar']};
                 border-radius: 6px;
             }}
-        """)
+        """
+        )
         search_wrapper_layout = QHBoxLayout(search_wrapper)
         search_wrapper_layout.setContentsMargins(12, 6, 12, 6)  # Increased padding
         search_wrapper_layout.setSpacing(8)  # Increased spacing
 
         self.search_icon = QLabel("🔍")
-        self.search_icon.setStyleSheet(f"""
+        self.search_icon.setStyleSheet(
+            f"""
             QLabel {{
                 color: {COLORS['text_muted']};
                 font-size: 16px;
@@ -777,7 +892,8 @@ class MainWindow(QMainWindow):
             QLabel:hover {{
                 color: {COLORS['text']};
             }}
-        """)
+        """
+        )
         self.search_icon.setCursor(Qt.CursorShape.PointingHandCursor)
         self.search_icon.mousePressEvent = self.clear_search
         search_wrapper_layout.addWidget(self.search_icon)
@@ -785,7 +901,8 @@ class MainWindow(QMainWindow):
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText("Search commands...")
         self.search_box.textChanged.connect(self.on_search)
-        self.search_box.setStyleSheet(f"""
+        self.search_box.setStyleSheet(
+            f"""
             QLineEdit {{
                 background: transparent;
                 border: none;
@@ -798,7 +915,8 @@ class MainWindow(QMainWindow):
             QLineEdit::placeholder {{
                 color: {COLORS['text_muted']};
             }}
-        """)
+        """
+        )
         search_wrapper_layout.addWidget(self.search_box)
 
         search_layout.addWidget(search_wrapper)
@@ -809,13 +927,15 @@ class MainWindow(QMainWindow):
 
         # Create right-side button container
         right_button_container = QWidget()
-        right_button_container.setStyleSheet(f"""
+        right_button_container.setStyleSheet(
+            f"""
             QWidget {{
                 background-color: {COLORS['sidebar']};
                 border-radius: 8px;
                 padding: 4px;
             }}
-        """)
+        """
+        )
         right_button_layout = QHBoxLayout(right_button_container)
         right_button_layout.setContentsMargins(4, 0, 4, 0)
         right_button_layout.setSpacing(4)
@@ -823,13 +943,14 @@ class MainWindow(QMainWindow):
         settings_btn = ModernToolButton("⚙", "Settings")
         settings_btn.clicked.connect(self.show_settings)
         right_button_layout.addWidget(settings_btn)
-        
+
         # Add the right button container to main layout
         layout.addWidget(right_button_container)
-        
+
         # Add version label
         version_label = QLabel("v1.0.0")
-        version_label.setStyleSheet(f"""
+        version_label.setStyleSheet(
+            f"""
             QLabel {{
                 color: {COLORS['text_muted']};
                 font-family: 'Inter';
@@ -837,29 +958,32 @@ class MainWindow(QMainWindow):
                 background: transparent;
                 margin-left: 8px;
             }}
-        """)
+        """
+        )
         layout.addWidget(version_label)
-        
+
         # Set the container as the toolbar widget
-        toolbar.setStyleSheet("""
+        toolbar.setStyleSheet(
+            """
             QToolBar {
                 border: none;
                 spacing: 0px;
                 padding: 0px;
             }
-        """)
+        """
+        )
         toolbar.addWidget(container)
         self.addToolBar(toolbar)
 
     def show_home_screen(self):
         """Show the home screen with welcome message."""
         self.content_title.setText("Welcome to PyDevCheat")
-        
+
         # Get command counts
         counts = self.get_total_commands()
-        is_loading = counts['status'] == 'loading'
-        count_data = counts['counts']
-        
+        is_loading = counts["status"] == "loading"
+        count_data = counts["counts"]
+
         # Create welcome screen HTML with modern styling
         welcome_html = f"""<html><style>
             body {{
@@ -1034,19 +1158,23 @@ class MainWindow(QMainWindow):
                 </div>
             </div>
         </body></html>"""
-        
+
         self.content.setHtml(welcome_html)
-        
+
         # Update status bar with detailed message
         if is_loading:
-            self.statusBar().showMessage(f"Loading sources... ({count_data['total']} commands available - TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})")
+            self.statusBar().showMessage(
+                f"Loading sources... ({count_data['total']} commands available - TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
+            )
         else:
-            self.statusBar().showMessage(f"Ready - {count_data['total']} commands available (TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})")
+            self.statusBar().showMessage(
+                f"Ready - {count_data['total']} commands available (TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
+            )
 
     def load_sources(self):
         """Load command sources in background threads."""
         logger.debug("Loading sources...")
-        
+
         # Reset loading state
         self.sources_loaded = False
         self.loading_complete_count = 0
@@ -1069,12 +1197,12 @@ class MainWindow(QMainWindow):
         worker.signals.result.connect(self.on_tldr_loaded)
         worker.signals.error.connect(lambda err: self.on_load_error((str(err[0]), "TLDR")))
         self.threadpool.start(worker)
-        
+
         worker = Worker(self.load_cheatsh_commands)
         worker.signals.result.connect(self.on_cheatsh_loaded)
         worker.signals.error.connect(lambda err: self.on_load_error((str(err[0]), "Cheat.sh")))
         self.threadpool.start(worker)
-        
+
         worker = Worker(self.load_devhints_commands)
         worker.signals.result.connect(self.on_devhints_loaded)
         worker.signals.error.connect(lambda err: self.on_load_error((str(err[0]), "DevHints")))
@@ -1116,13 +1244,13 @@ class MainWindow(QMainWindow):
         if source_name in self.loading_widgets:
             try:
                 widgets = self.loading_widgets[source_name]
-                if widgets['label']:
-                    widgets['label'].stop()
-                if widgets['item'] and widgets['parent']:
-                    idx = widgets['parent'].indexOfChild(widgets['item'])
+                if widgets["label"]:
+                    widgets["label"].stop()
+                if widgets["item"] and widgets["parent"]:
+                    idx = widgets["parent"].indexOfChild(widgets["item"])
                     if idx >= 0:
-                        widgets['parent'].takeChild(idx)
-                self.loading_widgets[source_name] = {'label': None, 'item': None, 'parent': None}
+                        widgets["parent"].takeChild(idx)
+                self.loading_widgets[source_name] = {"label": None, "item": None, "parent": None}
             except Exception as e:
                 logger.error(f"Error cleaning up loading widget for {source_name}: {e}")
 
@@ -1132,16 +1260,16 @@ class MainWindow(QMainWindow):
         formatted_count = f"{count:,}" if count > 0 else "0"  # Add commas for thousands
         # Use a more subtle formatting for the count
         item.setText(0, f"{original_name}  {formatted_count}")
-        item.setForeground(0, QColor(COLORS['text_muted']))
+        item.setForeground(0, QColor(COLORS["text_muted"]))
 
     def on_tldr_loaded(self, commands):
         """Handle loaded TLDR commands."""
         try:
             logger.debug(f"TLDR commands loaded: {len(commands)} commands")
-            
+
             # Stop loading animation and remove loading item
             self.cleanup_loading_widget("TLDR Pages")
-            
+
             # Create a flat list of all commands with their platforms
             command_list = []
             for command, platforms in commands.items():
@@ -1150,23 +1278,23 @@ class MainWindow(QMainWindow):
                 else:
                     platform_str = str(platforms)
                 command_list.append((command, platform_str))
-            
+
             # Sort commands alphabetically
             command_list.sort(key=lambda x: x[0].lower())
-            
+
             # Add commands directly under root
             for command, platforms in command_list:
                 cmd_item = QTreeWidgetItem(self.tldr_root)
                 cmd_item.setText(0, command)
                 cmd_item.setToolTip(0, f"Platforms: {platforms}")
-            
+
             # Update root text with count
             self.update_root_item_count(self.tldr_root, len(command_list))
-            
+
             # Remove the setExpanded call to keep it collapsed
             self.loading_complete_count += 1
             self.check_loading_complete()
-            
+
         except Exception as e:
             logger.error(f"Error processing TLDR commands: {e}")
             self.on_load_error((str(e), "TLDR"))
@@ -1176,7 +1304,7 @@ class MainWindow(QMainWindow):
         try:
             # Stop loading animation and remove loading item
             self.cleanup_loading_widget("Cheat.sh")
-            
+
             # Create a flat list of topics
             topic_list = []
             if isinstance(topics, dict):
@@ -1184,22 +1312,22 @@ class MainWindow(QMainWindow):
                     topic_list.append(topic)
             else:
                 topic_list = list(topics)
-            
+
             # Sort topics alphabetically
             topic_list.sort(key=str.lower)
-            
+
             # Add topics directly under root
             for topic in topic_list:
                 topic_item = QTreeWidgetItem(self.cheatsh_root)
                 topic_item.setText(0, topic)
-            
+
             # Update root text with count
             self.update_root_item_count(self.cheatsh_root, len(topic_list))
-            
+
             # Remove the setExpanded call to keep it collapsed
             self.loading_complete_count += 1
             self.check_loading_complete()
-            
+
         except Exception as e:
             logger.error(f"Error processing Cheat.sh topics: {e}")
             self.on_load_error((str(e), "Cheat.sh"))
@@ -1212,31 +1340,31 @@ class MainWindow(QMainWindow):
             if isinstance(topics, dict):
                 for topic, desc in topics.items():
                     # Clean up topic name
-                    clean_topic = topic.split('/')[-1] if '/' in topic else topic
-                    clean_topic = clean_topic.replace('-', ' ').replace('_', ' ').strip()
+                    clean_topic = topic.split("/")[-1] if "/" in topic else topic
+                    clean_topic = clean_topic.replace("-", " ").replace("_", " ").strip()
                     topic_list.append((clean_topic, topic))  # Store original topic for lookup
             else:
                 topic_list = [(topic, topic) for topic in topics]
-            
+
             # Sort topics alphabetically
             topic_list.sort(key=lambda x: x[0].lower())
-            
+
             # Add topics directly under root
             for display_topic, original_topic in topic_list:
                 topic_item = QTreeWidgetItem(self.devhints_root)
                 topic_item.setText(0, display_topic)
                 topic_item.setData(0, Qt.ItemDataRole.UserRole, original_topic)
-            
+
             # Update root text with count
             self.update_root_item_count(self.devhints_root, len(topic_list))
-            
+
             # Stop loading animation and remove loading item
             self.cleanup_loading_widget("DevHints")
-            
+
             # Remove the setExpanded call to keep it collapsed
             self.loading_complete_count += 1
             self.check_loading_complete()
-            
+
         except Exception as e:
             logger.error(f"Error processing DevHints topics: {e}")
             self.on_load_error((str(e), "DevHints"))
@@ -1254,7 +1382,7 @@ class MainWindow(QMainWindow):
             if self.loading_complete_count >= 3:
                 self.sources_loaded = True
                 self.progress.setVisible(False)
-                
+
                 if total > 0:
                     self.statusBar().showMessage(
                         f"Ready - {total:,} commands available "
@@ -1262,12 +1390,12 @@ class MainWindow(QMainWindow):
                     )
                 else:
                     self.statusBar().showMessage("No commands loaded. Try syncing sources.")
-                
+
                 # Update the welcome screen to reflect current counts
                 self.show_home_screen()
             else:
                 self.statusBar().showMessage("Loading sources...")
-            
+
         except Exception as e:
             logger.error(f"Error checking loading complete: {e}")
             self.statusBar().showMessage("Loading sources...")
@@ -1276,18 +1404,18 @@ class MainWindow(QMainWindow):
         """Handle loading errors."""
         error_msg, source = error_info
         logger.error(f"Error loading {source}: {error_msg}")
-        
+
         # Map source to root item
         source_map = {
             "TLDR": self.tldr_root,
             "Cheat.sh": self.cheatsh_root,
-            "DevHints": self.devhints_root
+            "DevHints": self.devhints_root,
         }
-        
+
         if source in source_map:
             root_item = source_map[source]
             root_item.setText(0, f"{source} (Error: {error_msg})")
-        
+
         self.statusBar().showMessage(f"Error loading {source}")
         self.check_loading_complete()
 
@@ -1303,7 +1431,8 @@ class MainWindow(QMainWindow):
         try:
             # Update search icon
             self.search_icon.setText("✕" if text else "🔍")
-            self.search_icon.setStyleSheet(f"""
+            self.search_icon.setStyleSheet(
+                f"""
                 QLabel {{
                     color: {COLORS['text_muted' if not text else 'text']};
                     font-size: 16px;
@@ -1312,43 +1441,44 @@ class MainWindow(QMainWindow):
                 QLabel:hover {{
                     color: {COLORS['text']};
                 }}
-            """)
-            
+            """
+            )
+
             text = text.lower()
             # Create variations of the search term
             search_variations = {text}  # Original search
-            if '-' in text:
+            if "-" in text:
                 # Add space version of hyphenated search
-                search_variations.add(text.replace('-', ' '))
-            elif ' ' in text:
+                search_variations.add(text.replace("-", " "))
+            elif " " in text:
                 # Add hyphenated version of space-separated search
-                search_variations.add(text.replace(' ', '-'))
+                search_variations.add(text.replace(" ", "-"))
 
             matches = 0
             total_items = 0
-            
+
             def filter_item(item):
                 nonlocal matches, total_items
                 # Check if this item matches any variation of the search term
                 item_text = item.text(0).lower()
                 matches_self = any(variation in item_text for variation in search_variations)
-                
+
                 # Don't count root items in total
                 if item.parent():
                     total_items += 1
                     if matches_self:
                         matches += 1
-                
+
                 # Check children
                 matches_children = False
                 for i in range(item.childCount()):
                     if filter_item(item.child(i)):
                         matches_children = True
-                
+
                 # Show/hide based on matches
                 should_show = matches_self or matches_children
                 item.setHidden(not should_show)
-                
+
                 # Expand if there are matches
                 if should_show:
                     # Expand this item if it has matching children
@@ -1362,17 +1492,17 @@ class MainWindow(QMainWindow):
                 else:
                     # Collapse if no matches
                     item.setExpanded(False)
-                
+
                 return should_show
-            
+
             # Process all top-level items
             for i in range(self.tree.topLevelItemCount()):
                 filter_item(self.tree.topLevelItem(i))
-            
+
             # Get current source counts
             counts = self.get_total_commands()
-            count_data = counts['counts']
-            
+            count_data = counts["counts"]
+
             # Update status bar with search results
             if text:
                 if matches == 0:
@@ -1390,7 +1520,7 @@ class MainWindow(QMainWindow):
                     f"Ready - {count_data['total']} commands available "
                     f"(TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
                 )
-                
+
         except Exception as e:
             logger.error(f"Error in search: {e}")
             self.statusBar().showMessage(f"Search error: {str(e)}")
@@ -1400,7 +1530,8 @@ class MainWindow(QMainWindow):
         if self.search_box.text():  # Only clear if there's text
             self.search_box.clear()
             self.search_icon.setText("🔍")
-            self.search_icon.setStyleSheet(f"""
+            self.search_icon.setStyleSheet(
+                f"""
                 QLabel {{
                     color: {COLORS['text_muted']};
                     font-size: 16px;
@@ -1409,11 +1540,12 @@ class MainWindow(QMainWindow):
                 QLabel:hover {{
                     color: {COLORS['text']};
                 }}
-            """)
+            """
+            )
             self.reset_tree_visibility()
             # Get current source counts
             counts = self.get_total_commands()
-            count_data = counts['counts']
+            count_data = counts["counts"]
             self.statusBar().showMessage(
                 f"Search cleared ({count_data['total']} commands available - "
                 f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
@@ -1425,14 +1557,14 @@ class MainWindow(QMainWindow):
             if not self.sources_loaded:
                 self.statusBar().showMessage("Loading sources...")
                 return
-                
+
             # Count total items per source
             tldr_count = self.count_items(self.tldr_root)
             cheatsh_count = self.count_items(self.cheatsh_root)
             devhints_count = self.count_items(self.devhints_root)
-            
+
             total_count = tldr_count + cheatsh_count + devhints_count
-            
+
             if total_count == 0:
                 self.statusBar().showMessage("No commands loaded. Try syncing sources.")
             else:
@@ -1449,7 +1581,7 @@ class MainWindow(QMainWindow):
         try:
             if not root_item:
                 return 0
-                
+
             count = 0
             for i in range(root_item.childCount()):
                 child = root_item.child(i)
@@ -1477,36 +1609,36 @@ class MainWindow(QMainWindow):
             # Get the source and command
             source = root.text(0).split(" (")[0].lower()
             command = item.text(0)
-            
+
             # For DevHints, use the stored original topic
             if source == "devhints":
                 command = item.data(0, Qt.ItemDataRole.UserRole) or command
-            
+
             # Only load content if this is a leaf item (not a root)
             if item != root:
                 # Get counts for status message
                 counts = self.get_total_commands()
-                count_data = counts['counts']
-                
+                count_data = counts["counts"]
+
                 # Format source name nicely
                 source_display = {
                     "tldr": "TLDR Pages",
                     "cheat.sh": "Cheat.sh",
-                    "devhints": "DevHints"
+                    "devhints": "DevHints",
                 }.get(source, source)
-                
+
                 self.statusBar().showMessage(
                     f"Loading '{command}' from {source_display} ({count_data['total']} commands available - "
                     f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
                 )
-                
+
                 if source.startswith("tldr"):
                     self.load_content("tldr", command, source_display)
                 elif source.startswith("cheat.sh"):
                     self.load_content("cheatsh", command, source_display)
                 elif source.startswith("devhints"):
                     self.load_content("devhints", command, source_display)
-            
+
         except Exception as e:
             logger.error(f"Error in on_item_clicked: {e}")
             self.statusBar().showMessage(f"Error loading content: {str(e)}")
@@ -1521,17 +1653,23 @@ class MainWindow(QMainWindow):
         # Add title bar
         title_container = QWidget()
         title_container.setFixedHeight(44)
-        title_container.setStyleSheet(f"""
+        title_container.setStyleSheet(
+            f"""
             QWidget {{
                 background-color: {COLORS['background']};
                 border-bottom: 1px solid {COLORS['border']};
             }}
-        """)
+        """
+        )
         title_layout = QHBoxLayout(title_container)
         title_layout.setContentsMargins(16, 0, 16, 0)
 
         self.content_title = QLabel("")
-        self.content_title.setStyleSheet("QLabel { color: " + COLORS['text'] + "; font-family: Inter; font-size: 14px; font-weight: bold; }")
+        self.content_title.setStyleSheet(
+            "QLabel { color: "
+            + COLORS["text"]
+            + "; font-family: Inter; font-size: 14px; font-weight: bold; }"
+        )
         title_layout.addWidget(self.content_title)
         title_layout.addStretch()
 
@@ -1541,7 +1679,8 @@ class MainWindow(QMainWindow):
         self.content = QTextEdit()
         self.content.setReadOnly(True)
         self.highlighter = SyntaxHighlighter(self.content.document())
-        self.content.setStyleSheet(f"""
+        self.content.setStyleSheet(
+            f"""
             QTextEdit {{
                 background-color: {COLORS['background']};
                 color: {COLORS['text']};
@@ -1598,7 +1737,8 @@ class MainWindow(QMainWindow):
                 background: none;
                 width: 0px;
             }}
-        """)
+        """
+        )
 
         content_layout.addWidget(self.content)
         return content_container
@@ -1607,25 +1747,25 @@ class MainWindow(QMainWindow):
         """Format the content for better display."""
         if not content:
             return ""
-            
-        lines = content.split('\n')
+
+        lines = content.split("\n")
         formatted_lines = []
         current_section = None
         in_table = False
-        
+
         for line in lines:
             line = line.strip()
             if not line:
                 if formatted_lines and not formatted_lines[-1] == "":
                     formatted_lines.append("")
                 continue
-            
+
             # Handle markdown table (usually in header)
-            if line.startswith('|'):
+            if line.startswith("|"):
                 if not in_table:
                     in_table = True
                     # Extract title and intro if this is the header table
-                    parts = line.split('|')
+                    parts = line.split("|")
                     if len(parts) >= 3:
                         title = parts[1].strip()
                         intro = parts[2].strip()
@@ -1638,9 +1778,9 @@ class MainWindow(QMainWindow):
             elif in_table:
                 in_table = False
                 continue
-                
+
             # Handle section headers (> text)
-            if line.startswith('>'):
+            if line.startswith(">"):
                 if formatted_lines:
                     formatted_lines.append("")
                 section_name = line[1:].strip()
@@ -1648,22 +1788,22 @@ class MainWindow(QMainWindow):
                 formatted_lines.append("─" * 30)
                 current_section = section_name
                 continue
-            
+
             # Handle regular command lines
-            if line.startswith('`'):
+            if line.startswith("`"):
                 # Clean up command line
-                cmd = line.strip('`')
+                cmd = line.strip("`")
                 # Extract command and description
-                parts = cmd.split('#', 1)
+                parts = cmd.split("#", 1)
                 command = parts[0].strip()
                 description = parts[1].strip() if len(parts) > 1 else ""
-                
+
                 # Format command with description
                 if description:
                     formatted_lines.append(f"{command}  # {description}")
                 else:
                     formatted_lines.append(command)
-            elif line.startswith('#'):
+            elif line.startswith("#"):
                 # Handle markdown headers
                 if formatted_lines:
                     formatted_lines.append("")
@@ -1672,19 +1812,21 @@ class MainWindow(QMainWindow):
             else:
                 # Regular text (probably description)
                 formatted_lines.append(line)
-        
-        return '\n'.join(formatted_lines)
+
+        return "\n".join(formatted_lines)
 
     def load_content(self, source: str, command: str, source_display: str = None) -> Optional[str]:
         """Load content for a command."""
         logger.debug(f"Loading content for {source}:{command}")
-        
+
         # Clear previous content
         self.content.clear()
         self.content_title.setText(command)
-        
+
         worker = Worker(self._load_content_worker, source, command)
-        worker.signals.result.connect(lambda result: self._handle_content_result(result, command, source_display))
+        worker.signals.result.connect(
+            lambda result: self._handle_content_result(result, command, source_display)
+        )
         worker.signals.error.connect(lambda err: self.on_content_error(err, command))
         self.threadpool.start(worker)
 
@@ -1701,17 +1843,17 @@ class MainWindow(QMainWindow):
                     self.display_devhints_content(content)
             else:
                 self.display_content(result)
-            
+
             # Update status bar with success message
             counts = self.get_total_commands()
-            count_data = counts['counts']
+            count_data = counts["counts"]
             source_name = source_display or source.title()
-            
+
             self.statusBar().showMessage(
                 f"Loaded '{command}' from {source_name} ({count_data['total']} commands available - "
                 f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
             )
-            
+
         except Exception as e:
             logger.error(f"Error handling content result: {e}")
             self.statusBar().showMessage(f"Error displaying content: {str(e)}")
@@ -1739,48 +1881,48 @@ class MainWindow(QMainWindow):
         if not content:
             self.display_error("No TLDR content available")
             return
-            
+
         self.content_title.setText("TLDR Pages")
         formatted_content = self.format_content(content)
         self.content.clear()
         self.content.setPlainText(formatted_content.lstrip())  # Remove leading whitespace
         self.statusBar().showMessage("Ready")
-        
+
     def display_cheatsh_content(self, content):
         """Display Cheat.sh content with proper formatting."""
         if not content:
             self.display_error("No Cheat.sh content available")
             return
-            
+
         self.content_title.setText("Cheat.sh")
         formatted_content = self.format_content(content)
         self.content.clear()
         self.content.setPlainText(formatted_content.lstrip())  # Remove leading whitespace
         self.statusBar().showMessage("Ready")
-        
+
     def display_devhints_content(self, content):
         """Display DevHints content with proper formatting."""
         if not content:
             self.display_error("No DevHints content available")
             return
-            
+
         self.content_title.setText("DevHints")
         formatted_content = self.format_content(content)
         self.content.clear()
         self.content.setPlainText(formatted_content.lstrip())  # Remove leading whitespace
         self.statusBar().showMessage("Ready")
-        
+
     def display_search_results(self, results):
         """Display search results with proper formatting."""
         if not results:
             self.display_error("No search results found")
             return
-            
+
         self.content_title.setText("Search Results")
         self.content.clear()
         self.content.setPlainText(results)
         self.statusBar().showMessage("Search completed")
-        
+
     def display_error(self, error_message):
         """Display error message with proper formatting."""
         self.content_title.setText("Error")
@@ -1800,8 +1942,8 @@ class MainWindow(QMainWindow):
         """Handle content loading error."""
         error_msg = error_info[0]
         counts = self.get_total_commands()
-        count_data = counts['counts']
-        
+        count_data = counts["counts"]
+
         self.statusBar().showMessage(
             f"Error loading '{command}': {error_msg} ({count_data['total']} commands available - "
             f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
@@ -1815,21 +1957,20 @@ class MainWindow(QMainWindow):
             self.progress.setVisible(True)
             self.progress.setRange(0, 6)  # 2 steps per source
             self.progress.setValue(0)
-            
+
             # Create and start sync worker
             worker = SyncWorker(self)
             worker.signals.progress.connect(self.on_sync_progress)
             worker.signals.result.connect(self.on_sync_complete)
             worker.signals.error.connect(self.on_sync_error)
-            
+
             self.threadpool.start(worker)
-            
+
         except Exception as e:
             logger.error(f"Error starting sync: {e}")
             self.statusBar().showMessage(f"Error starting sync: {str(e)}")
             self.progress.setVisible(False)
-            QMessageBox.warning(self, "Sync Error",
-                              f"Failed to start sync: {str(e)}")
+            QMessageBox.warning(self, "Sync Error", f"Failed to start sync: {str(e)}")
 
     def on_sync_progress(self, message):
         """Handle sync progress updates."""
@@ -1841,20 +1982,25 @@ class MainWindow(QMainWindow):
         """Handle successful sync of all sources."""
         success_count = sum(1 for result in results.values() if result)
         total_count = len(results)
-        
+
         if success_count == total_count:
             self.statusBar().showMessage("✓ All sources synchronized successfully")
         else:
             failed_sources = [source for source, result in results.items() if not result]
-            self.statusBar().showMessage(f"⚠ Sync completed with errors ({success_count}/{total_count} sources)")
-            
+            self.statusBar().showMessage(
+                f"⚠ Sync completed with errors ({success_count}/{total_count} sources)"
+            )
+
             # Show detailed message if there were any failures
             if success_count < total_count:
-                QMessageBox.warning(self, "Sync Warning",
-                                  f"Failed to sync: {', '.join(failed_sources)}\nCheck the logs for details.")
-        
+                QMessageBox.warning(
+                    self,
+                    "Sync Warning",
+                    f"Failed to sync: {', '.join(failed_sources)}\nCheck the logs for details.",
+                )
+
         self.progress.setVisible(False)
-        
+
         # Reload sources after successful sync
         if success_count > 0:
             self.statusBar().showMessage("Reloading sources after sync...")
@@ -1866,25 +2012,28 @@ class MainWindow(QMainWindow):
         logger.error(f"Error during sync: {error_msg}")
         self.statusBar().showMessage(f"✕ Sync failed: {error_msg}")
         self.progress.setVisible(False)
-        QMessageBox.critical(self, "Sync Error",
-                           f"Sync failed: {error_msg}\nCheck the logs for details.")
+        QMessageBox.critical(
+            self, "Sync Error", f"Sync failed: {error_msg}\nCheck the logs for details."
+        )
 
     def reset_tree_visibility(self):
         """Reset visibility of all tree items and restore default expansion."""
+
         def reset_item(item):
             item.setHidden(False)
             # Expand only top-level items by default
             item.setExpanded(item.parent() is None)
             for i in range(item.childCount()):
                 reset_item(item.child(i))
-        
+
         for i in range(self.tree.topLevelItemCount()):
             reset_item(self.tree.topLevelItem(i))
-    
+
     def show_tree_context_menu(self, position):
         """Show a modern context menu for the tree widget."""
         menu = QMenu(self)
-        menu.setStyleSheet(f"""
+        menu.setStyleSheet(
+            f"""
             QMenu {{
                 background-color: {COLORS['sidebar']};
                 border: 1px solid {COLORS['border']};
@@ -1905,23 +2054,24 @@ class MainWindow(QMainWindow):
                 background-color: {COLORS['border']};
                 margin: 4px 0;
             }}
-        """)
+        """
+        )
 
         # Get the item that was clicked
         item = self.tree.itemAt(position)
-        
+
         if item:
             if item.parent() is None:
                 source_name = item.text(0).split(" (")[0]
                 expand_action = menu.addAction(f"▾ Expand {source_name}")
                 collapse_action = menu.addAction(f"▸ Collapse {source_name}")
                 menu.addSeparator()
-        
+
         expand_all = menu.addAction("▾ Expand All")
         collapse_all = menu.addAction("▸ Collapse All")
-        
+
         action = menu.exec(self.tree.viewport().mapToGlobal(position))
-        
+
         if action:
             if action == expand_all:
                 self.tree.expandAll()
@@ -1935,23 +2085,25 @@ class MainWindow(QMainWindow):
 
     def _expand_tree_section(self, item):
         """Expand a tree section with animation."""
+
         def expand_children(parent):
             for i in range(parent.childCount()):
                 child = parent.child(i)
                 child.setExpanded(True)
                 expand_children(child)
-        
+
         item.setExpanded(True)
         expand_children(item)
 
     def _collapse_tree_section(self, item):
         """Collapse a tree section with animation."""
+
         def collapse_children(parent):
             for i in range(parent.childCount()):
                 child = parent.child(i)
                 child.setExpanded(False)
                 collapse_children(child)
-        
+
         item.setExpanded(False)
         collapse_children(item)
 
@@ -1972,29 +2124,24 @@ class MainWindow(QMainWindow):
                 return f"{count:,}" if count > 0 else "0"
 
             return {
-                'status': 'loading' if loading else 'ready',
-                'counts': {
-                    'tldr': format_count(tldr_count),
-                    'cheatsh': format_count(cheatsh_count),
-                    'devhints': format_count(devhints_count),
-                    'total': format_count(total)
-                }
+                "status": "loading" if loading else "ready",
+                "counts": {
+                    "tldr": format_count(tldr_count),
+                    "cheatsh": format_count(cheatsh_count),
+                    "devhints": format_count(devhints_count),
+                    "total": format_count(total),
+                },
             }
         except Exception as e:
             logger.error(f"Error counting commands: {e}")
             return {
-                'status': 'error',
-                'counts': {
-                    'tldr': '0',
-                    'cheatsh': '0',
-                    'devhints': '0',
-                    'total': '0'
-                }
+                "status": "error",
+                "counts": {"tldr": "0", "cheatsh": "0", "devhints": "0", "total": "0"},
             }
 
     def display_content(self, content: str):
         """Display the content in the text view."""
-        if content.startswith('<html>'):
+        if content.startswith("<html>"):
             self.content.setHtml(content)
         else:
             self.content.setPlainText(content)
@@ -2003,12 +2150,14 @@ class MainWindow(QMainWindow):
     def show_settings(self):
         """Show the settings dialog."""
         dialog = SettingsDialog(self)
-        dialog.setStyleSheet(f"""
+        dialog.setStyleSheet(
+            f"""
             QDialog {{
                 background-color: {COLORS['background']};
                 color: {COLORS['text']};
             }}
-        """)
+        """
+        )
         dialog.exec()
 
     def expand_all(self):
@@ -2016,7 +2165,7 @@ class MainWindow(QMainWindow):
         self.tree.expandAll()
         # Get current source counts
         counts = self.get_total_commands()
-        count_data = counts['counts']
+        count_data = counts["counts"]
         self.statusBar().showMessage(
             f"Expanded all sections ({count_data['total']} commands available - "
             f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
@@ -2030,11 +2179,12 @@ class MainWindow(QMainWindow):
             self.tree.topLevelItem(i).setExpanded(True)
         # Get current source counts
         counts = self.get_total_commands()
-        count_data = counts['counts']
+        count_data = counts["counts"]
         self.statusBar().showMessage(
             f"Collapsed all sections ({count_data['total']} commands available - "
             f"TLDR: {count_data['tldr']}, Cheat.sh: {count_data['cheatsh']}, DevHints: {count_data['devhints']})"
         )
+
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
@@ -2043,14 +2193,15 @@ class SettingsDialog(QDialog):
         self.setWindowTitle("Settings")
         self.setMinimumWidth(400)
         self.setup_ui()
-        
+
     def setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(16)
-        
+
         # Create tabs
         tabs = QTabWidget()
-        tabs.setStyleSheet(f"""
+        tabs.setStyleSheet(
+            f"""
             QTabWidget::pane {{
                 border: 1px solid {COLORS['border']};
                 background: {COLORS['background']};
@@ -2075,15 +2226,17 @@ class SettingsDialog(QDialog):
             QTabBar::tab:!selected {{
                 margin-top: 2px;
             }}
-        """)
-        
+        """
+        )
+
         # Appearance tab
         appearance_tab = QWidget()
         appearance_layout = QVBoxLayout(appearance_tab)
-        
+
         # Font sizes group
         font_group = QGroupBox("Font Sizes")
-        font_group.setStyleSheet(f"""
+        font_group.setStyleSheet(
+            f"""
             QGroupBox {{
                 color: {COLORS['text']};
                 border: 1px solid {COLORS['border']};
@@ -2096,20 +2249,28 @@ class SettingsDialog(QDialog):
                 left: 8px;
                 padding: 0 3px;
             }}
-        """)
+        """
+        )
         font_layout = QFormLayout(font_group)
         font_layout.setSpacing(10)
-        
+
         # Create spin boxes for font sizes
         self.source_list_size = QSpinBox()
         self.source_header_size = QSpinBox()  # New spinbox for source headers
         self.content_size = QSpinBox()
         self.search_size = QSpinBox()
         self.title_size = QSpinBox()
-        
-        for spinbox in [self.source_list_size, self.source_header_size, self.content_size, self.search_size, self.title_size]:
+
+        for spinbox in [
+            self.source_list_size,
+            self.source_header_size,
+            self.content_size,
+            self.search_size,
+            self.title_size,
+        ]:
             spinbox.setRange(6, 24)
-            spinbox.setStyleSheet(f"""
+            spinbox.setStyleSheet(
+                f"""
                 QSpinBox {{
                     background-color: {COLORS['code_bg']};
                     color: {COLORS['text']};
@@ -2127,8 +2288,9 @@ class SettingsDialog(QDialog):
                 QSpinBox::up-button:hover, QSpinBox::down-button:hover {{
                     background: {COLORS['hover']};
                 }}
-            """)
-        
+            """
+            )
+
         # Set current values from settings manager
         font_sizes = settings_manager.get_font_sizes()
         self.source_list_size.setValue(font_sizes["source_list"])
@@ -2136,28 +2298,29 @@ class SettingsDialog(QDialog):
         self.content_size.setValue(font_sizes["content"])
         self.search_size.setValue(font_sizes["search"])
         self.title_size.setValue(font_sizes["title"])
-        
+
         # Add to layout with labels
         font_layout.addRow("Source Headers:", self.source_header_size)  # Add source headers control
         font_layout.addRow("Source Items:", self.source_list_size)
         font_layout.addRow("Content:", self.content_size)
         font_layout.addRow("Search Box:", self.search_size)
         font_layout.addRow("Titles:", self.title_size)
-        
+
         appearance_layout.addWidget(font_group)
         appearance_layout.addStretch()
-        
+
         # Add tabs
         tabs.addTab(appearance_tab, "Appearance")
         layout.addWidget(tabs)
-        
+
         # Buttons
         button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | 
-            QDialogButtonBox.StandardButton.Cancel |
-            QDialogButtonBox.StandardButton.Apply
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+            | QDialogButtonBox.StandardButton.Apply
         )
-        button_box.setStyleSheet(f"""
+        button_box.setStyleSheet(
+            f"""
             QPushButton {{
                 background-color: {COLORS['code_bg']};
                 color: {COLORS['text']};
@@ -2173,14 +2336,17 @@ class SettingsDialog(QDialog):
             QPushButton:pressed {{
                 background-color: {COLORS['selection']};
             }}
-        """)
-        
+        """
+        )
+
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
-        button_box.button(QDialogButtonBox.StandardButton.Apply).clicked.connect(self.apply_settings)
-        
+        button_box.button(QDialogButtonBox.StandardButton.Apply).clicked.connect(
+            self.apply_settings
+        )
+
         layout.addWidget(button_box)
-    
+
     def apply_settings(self):
         """Apply the current settings."""
         # Update font sizes in settings manager
@@ -2189,24 +2355,29 @@ class SettingsDialog(QDialog):
             "source_header": self.source_header_size.value(),
             "content": self.content_size.value(),
             "search": self.search_size.value(),
-            "title": self.title_size.value()
+            "title": self.title_size.value(),
         }
         settings_manager.update_font_sizes(new_sizes)
-        
+
         # Update fonts
         DEFAULT_FONT.setPointSize(new_sizes["content"])
         MONOSPACE_FONT.setPointSize(new_sizes["content"])
-        
+
         # Apply changes to parent window
         if self.parent:
             # Update root items font size
-            for root_item in [self.parent.tldr_root, self.parent.cheatsh_root, self.parent.devhints_root]:
+            for root_item in [
+                self.parent.tldr_root,
+                self.parent.cheatsh_root,
+                self.parent.devhints_root,
+            ]:
                 font = QFont("Inter", new_sizes["source_header"])
                 font.setBold(True)
                 root_item.setFont(0, font)
-            
+
             # Update tree font
-            self.parent.tree.setStyleSheet(f"""
+            self.parent.tree.setStyleSheet(
+                f"""
                 QTreeWidget {{
                     background-color: {COLORS['sidebar']};
                     border: none;
@@ -2225,10 +2396,12 @@ class SettingsDialog(QDialog):
                     background-color: {COLORS['selection']};
                     color: {COLORS['heading']};
                 }}
-            """)
-            
+            """
+            )
+
             # Update search box font
-            self.parent.search_box.setStyleSheet(f"""
+            self.parent.search_box.setStyleSheet(
+                f"""
                 SearchBox {{
                     background-color: {COLORS['background']};
                     color: {COLORS['text']};
@@ -2241,10 +2414,12 @@ class SettingsDialog(QDialog):
                 SearchBox:focus {{
                     border: 1px solid {COLORS['accent']};
                 }}
-            """)
-            
+            """
+            )
+
             # Update content title font
-            self.parent.content_title.setStyleSheet(f"""
+            self.parent.content_title.setStyleSheet(
+                f"""
                 QLabel {{
                     color: {COLORS['heading']};
                     font-family: 'Inter';
@@ -2252,10 +2427,12 @@ class SettingsDialog(QDialog):
                     font-weight: bold;
                     padding: 8px 0;
                 }}
-            """)
-            
+            """
+            )
+
             # Update content view font
-            self.parent.content.setStyleSheet(f"""
+            self.parent.content.setStyleSheet(
+                f"""
                 QTextEdit {{
                     background-color: {COLORS['background']};
                     color: {COLORS['text']};
@@ -2266,54 +2443,57 @@ class SettingsDialog(QDialog):
                     selection-color: {COLORS['text']};
                     padding: 0;
                 }}
-            """)
-            
+            """
+            )
+
             # Refresh the content to apply new styles
             current_content = self.parent.content.toHtml()
             self.parent.content.clear()
             self.parent.content.setHtml(current_content)
-    
+
     def accept(self):
         """Handle OK button click."""
         self.apply_settings()
         super().accept()
 
+
 def run_gui():
     """Run the GUI application."""
     try:
         app = QApplication(sys.argv)
-        
+
         # Set application style
         app.setStyle("Fusion")
-        
+
         # Set application icon for taskbar
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "icons", "logo-64.png")
+        icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "assets", "icons", "logo-64.png"
+        )
         if os.path.exists(icon_path):
             app_icon = QIcon(icon_path)
             app.setWindowIcon(app_icon)
-        
+
         # Set dark theme colors
         palette = app.palette()
-        palette.setColor(palette.ColorRole.Window, QColor(COLORS['background']))
-        palette.setColor(palette.ColorRole.WindowText, QColor(COLORS['text']))
-        palette.setColor(palette.ColorRole.Base, QColor(COLORS['background']))
-        palette.setColor(palette.ColorRole.AlternateBase, QColor(COLORS['sidebar']))
-        palette.setColor(palette.ColorRole.ToolTipBase, QColor(COLORS['code_bg']))
-        palette.setColor(palette.ColorRole.ToolTipText, QColor(COLORS['text']))
-        palette.setColor(palette.ColorRole.Text, QColor(COLORS['text']))
-        palette.setColor(palette.ColorRole.Button, QColor(COLORS['sidebar']))
-        palette.setColor(palette.ColorRole.ButtonText, QColor(COLORS['text']))
-        palette.setColor(palette.ColorRole.Highlight, QColor(COLORS['accent']))
-        palette.setColor(palette.ColorRole.HighlightedText, QColor(COLORS['text']))
+        palette.setColor(palette.ColorRole.Window, QColor(COLORS["background"]))
+        palette.setColor(palette.ColorRole.WindowText, QColor(COLORS["text"]))
+        palette.setColor(palette.ColorRole.Base, QColor(COLORS["background"]))
+        palette.setColor(palette.ColorRole.AlternateBase, QColor(COLORS["sidebar"]))
+        palette.setColor(palette.ColorRole.ToolTipBase, QColor(COLORS["code_bg"]))
+        palette.setColor(palette.ColorRole.ToolTipText, QColor(COLORS["text"]))
+        palette.setColor(palette.ColorRole.Text, QColor(COLORS["text"]))
+        palette.setColor(palette.ColorRole.Button, QColor(COLORS["sidebar"]))
+        palette.setColor(palette.ColorRole.ButtonText, QColor(COLORS["text"]))
+        palette.setColor(palette.ColorRole.Highlight, QColor(COLORS["accent"]))
+        palette.setColor(palette.ColorRole.HighlightedText, QColor(COLORS["text"]))
         app.setPalette(palette)
-        
+
         window = MainWindow()
         window.show()  # Window will already be maximized due to setWindowState
-        
+
         sys.exit(app.exec())
     except Exception as e:
         logger.error(f"Fatal error in GUI: {e}")
-        if 'app' in locals():
-            QMessageBox.critical(None, "Fatal Error",
-                               f"Application crashed: {str(e)}")
-        sys.exit(1) 
+        if "app" in locals():
+            QMessageBox.critical(None, "Fatal Error", f"Application crashed: {str(e)}")
+        sys.exit(1)

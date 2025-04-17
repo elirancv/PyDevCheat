@@ -56,4 +56,14 @@ pydevcheat = "pydevcheat.main:app"
 packages = ["pydevcheat"]
 
 [tool.setuptools.package-data]
-pydevcheat = ["assets/*", "assets/icons/*", "assets/docs/*"] 
+pydevcheat = ["assets/*", "assets/icons/*", "assets/docs/*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py39']
+include = '\.pyi?$'
+extend-exclude = '''
+# A regex preceded with ^/ will apply only to files and directories
+# in the root of the project.
+^/tests/
+''' 

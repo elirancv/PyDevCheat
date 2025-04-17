@@ -8,4 +8,4 @@ __email__ = "elirancv@gmail.com"
 
 from pydevcheat.main import PyDevCheat
 
-__all__ = ["PyDevCheat"] 
+__all__ = ["PyDevCheat"]

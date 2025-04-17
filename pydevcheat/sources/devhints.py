@@ -11,57 +11,55 @@ from ..utils import create_retry_decorator, handle_source_error, NetworkError, S
 
 logger = logging.getLogger(__name__)
 
+
 class DevhintsSource:
     """A source that fetches cheat sheets from the rstacruz/cheatsheets GitHub repository."""
-    
+
     # Create retry decorator for network requests
-    retry_request = create_retry_decorator(
-        max_attempts=3,
-        min_wait=1,
-        max_wait=10
-    )
-    
+    retry_request = create_retry_decorator(max_attempts=3, min_wait=1, max_wait=10)
+
     def __init__(self, cache_dir: Optional[Path] = None):
         """Initialize the DevhintsSource."""
         self.base_url = "https://raw.githubusercontent.com/rstacruz/cheatsheets/master"
-        self.api_url = "https://api.github.com/repos/rstacruz/cheatsheets/git/trees/master?recursive=1"
+        self.api_url = (
+            "https://api.github.com/repos/rstacruz/cheatsheets/git/trees/master?recursive=1"
+        )
         self.topics_cache = {}
         self.local_cache_dir = Path(os.path.expanduser("~/.cache/pydevcheat/devhints"))
         self.local_cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_dir = cache_dir if cache_dir else Path.home() / '.pydevcheat' / 'cache' / 'devhints'
+        self.cache_dir = (
+            cache_dir if cache_dir else Path.home() / ".pydevcheat" / "cache" / "devhints"
+        )
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_file = self.cache_dir / 'sheets.json'
-        self.sheets_cache = self.cache_dir / 'sheets'
+        self.cache_file = self.cache_dir / "sheets.json"
+        self.sheets_cache = self.cache_dir / "sheets"
         self.sheets_cache.mkdir(exist_ok=True)
         self.rate_limit_delay = 2.0  # seconds between requests
         self.last_request_time = 0
 
         # Common cheat sheets to pre-cache
         self.common_sheets = [
-            'python.md',
-            'javascript.md',
-            'git.md',
-            'bash.md',
-            'docker.md',
-            'react.md',
-            'vim.md',
-            'css.md',
-            'html.md',
-            'nodejs.md'
+            "python.md",
+            "javascript.md",
+            "git.md",
+            "bash.md",
+            "docker.md",
+            "react.md",
+            "vim.md",
+            "css.md",
+            "html.md",
+            "nodejs.md",
         ]
-        
+
     @retry_request
     def _make_request(self, url: str, headers: Optional[Dict] = None) -> str:
         """Make a retryable HTTP request."""
         if headers is None:
-            headers = {
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "text/plain"
-            }
+            headers = {"User-Agent": "Mozilla/5.0", "Accept": "text/plain"}
         response = httpx.get(url, headers=headers, follow_redirects=True, timeout=10.0)
         response.raise_for_status()
         return response.text
-        
+
     def search(self, query: str) -> Optional[str]:
         """
         Search for a cheatsheet by query and return its contents.
@@ -69,208 +67,208 @@ class DevhintsSource:
         """
         try:
             # Clean up query
-            query = query.lower().replace(' ', '-')
-            if not query.endswith('.md'):
-                query += '.md'
-                
+            query = query.lower().replace(" ", "-")
+            if not query.endswith(".md"):
+                query += ".md"
+
             # Try local cache first
             local_file = self.local_cache_dir / query
             if local_file.exists():
-                content = local_file.read_text(encoding='utf-8')
+                content = local_file.read_text(encoding="utf-8")
                 return self._format_content(content)
-                
+
             # Fetch from GitHub if not in cache
             content = self._make_request(f"{self.base_url}/{query}")
-            
+
             # Cache the content locally
-            local_file.write_text(content, encoding='utf-8')
-            
+            local_file.write_text(content, encoding="utf-8")
+
             return self._format_content(content)
-            
+
         except Exception as e:
             handle_source_error("devhints", e)
             return None
-            
+
     def _format_content(self, content: str) -> str:
         """Format the markdown content with proper styling."""
         try:
             # Split frontmatter and content
             frontmatter, markdown = self._split_frontmatter(content)
-            
+
             formatted_parts = []
-            
+
             # Add title and intro if available
             if frontmatter:
-                if 'title' in frontmatter:
+                if "title" in frontmatter:
                     formatted_parts.append(f"# {frontmatter['title']}\n")
-                if 'intro' in frontmatter:
+                if "intro" in frontmatter:
                     formatted_parts.append(f"{frontmatter['intro']}\n")
-            
+
             # Add the main content
             formatted_parts.append(markdown.strip())
-            
+
             return "\n".join(formatted_parts)
-            
+
         except Exception as e:
             logger.error(f"Error formatting content: {e}")
             return content
-            
+
     def _split_frontmatter(self, content: str) -> Tuple[Dict, str]:
         """Extract YAML frontmatter from markdown content."""
         frontmatter = {}
         markdown = content
-        
+
         # Look for table-style frontmatter
-        table_match = re.match(r'\|(.*?)\|(.*?)\|\n\|(.*?)\|(.*?)\|\n(.*)', content, re.DOTALL)
+        table_match = re.match(r"\|(.*?)\|(.*?)\|\n\|(.*?)\|(.*?)\|\n(.*)", content, re.DOTALL)
         if table_match:
             try:
-                headers = [h.strip() for h in table_match.group(1).split('|')]
-                values = [v.strip() for v in table_match.group(2).split('|')]
+                headers = [h.strip() for h in table_match.group(1).split("|")]
+                values = [v.strip() for v in table_match.group(2).split("|")]
                 frontmatter = dict(zip(headers, values))
                 markdown = table_match.group(5)
             except:
                 pass
-        
+
         # Look for YAML-style frontmatter
-        yaml_match = re.match(r'^---\n(.*?)\n---\n(.*)', content, re.DOTALL)
+        yaml_match = re.match(r"^---\n(.*?)\n---\n(.*)", content, re.DOTALL)
         if yaml_match:
             try:
                 frontmatter = yaml.safe_load(yaml_match.group(1))
                 markdown = yaml_match.group(2)
             except:
                 pass
-                
+
         return frontmatter, markdown
-            
+
     def list_all_topics(self) -> Dict[str, str]:
         """List all available topics from the GitHub repository."""
         try:
             if self.topics_cache:
                 return self.topics_cache
-                
+
             # Use the GitHub API to list files in the repository
-            api_url = "https://api.github.com/repos/rstacruz/cheatsheets/git/trees/master?recursive=1"
-            headers = {
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "application/vnd.github.v3+json"
-            }
-            
+            api_url = (
+                "https://api.github.com/repos/rstacruz/cheatsheets/git/trees/master?recursive=1"
+            )
+            headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/vnd.github.v3+json"}
+
             logger.debug(f"Fetching repository tree from GitHub API: {api_url}")
             response = httpx.get(api_url, headers=headers, timeout=10.0)
-            
+
             if response.status_code != 200:
-                logger.error(f"GitHub API returned status code {response.status_code}: {response.text}")
+                logger.error(
+                    f"GitHub API returned status code {response.status_code}: {response.text}"
+                )
                 return self._get_fallback_topics()
-                
+
             data = response.json()
             logger.debug(f"Got response from GitHub API with {len(data.get('tree', []))} items")
-            
+
             topics = {}
-            md_files = [item for item in data.get('tree', []) if item.get('path', '').endswith('.md')]
+            md_files = [
+                item for item in data.get("tree", []) if item.get("path", "").endswith(".md")
+            ]
             logger.debug(f"Found {len(md_files)} markdown files")
-            
+
             for item in md_files:
-                path = item.get('path', '')
-                if path != 'README.md':
+                path = item.get("path", "")
+                if path != "README.md":
                     # Remove .md extension and convert to title
-                    title = path[:-3].replace('-', ' ').title()
+                    title = path[:-3].replace("-", " ").title()
                     logger.debug(f"Processing file: {path} -> {title}")
-                    
+
                     # Determine category based on filename prefix
                     category = self._determine_category(path)
                     topics[title] = category
                     logger.debug(f"Added topic {title} to category {category}")
-            
+
             if not topics:
                 logger.warning("No topics found in GitHub response, using fallback")
                 return self._get_fallback_topics()
-                
+
             logger.info(f"Successfully loaded {len(topics)} topics from GitHub")
             self.topics_cache = topics
             return topics
-            
+
         except Exception as e:
             logger.error(f"Error fetching topics from GitHub: {e}")
             return self._get_fallback_topics()
-            
+
     def _get_title_from_file(self, path: str) -> Optional[str]:
         """Try to extract the title from a file's frontmatter."""
         try:
             url = f"{self.base_url}/{path}"
-            headers = {
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "text/plain"
-            }
-            
+            headers = {"User-Agent": "Mozilla/5.0", "Accept": "text/plain"}
+
             response = httpx.get(url, headers=headers, follow_redirects=True, timeout=10.0)
-            
+
             if response.status_code != 200:
                 return None
-                
+
             frontmatter, _ = self._split_frontmatter(response.text)
-            return frontmatter.get('title')
-            
+            return frontmatter.get("title")
+
         except Exception:
             return None
-            
+
     def _determine_category(self, path: str) -> str:
         """Determine the category of a cheatsheet based on its filename."""
         category = "Others"
-        
+
         # Common prefixes and their categories
         prefixes = {
-            'js-': "JavaScript",
-            'css-': "CSS",
-            'html-': "HTML",
-            'ruby-': "Ruby",
-            'python-': "Python",
-            'git-': "Git",
-            'docker-': "DevOps",
-            'rails-': "Rails",
-            'vim-': "Vim",
-            'react-': "React",
-            'vue-': "Vue",
-            'angular-': "Angular",
-            'node-': "Node.js",
-            'aws-': "AWS",
-            'linux-': "Linux",
-            'bash-': "CLI",
-            'postgres-': "Databases",
-            'mysql-': "Databases",
-            'mongo-': "Databases"
+            "js-": "JavaScript",
+            "css-": "CSS",
+            "html-": "HTML",
+            "ruby-": "Ruby",
+            "python-": "Python",
+            "git-": "Git",
+            "docker-": "DevOps",
+            "rails-": "Rails",
+            "vim-": "Vim",
+            "react-": "React",
+            "vue-": "Vue",
+            "angular-": "Angular",
+            "node-": "Node.js",
+            "aws-": "AWS",
+            "linux-": "Linux",
+            "bash-": "CLI",
+            "postgres-": "Databases",
+            "mysql-": "Databases",
+            "mongo-": "Databases",
         }
-        
+
         # Check for prefix matches
         for prefix, cat in prefixes.items():
             if path.startswith(prefix):
                 return cat
-                
+
         # If no prefix match, try to determine category from path components
-        if '/' in path:
-            first_part = path.split('/')[0].lower()
-            if first_part in ['javascript', 'js']:
+        if "/" in path:
+            first_part = path.split("/")[0].lower()
+            if first_part in ["javascript", "js"]:
                 return "JavaScript"
-            elif first_part in ['css', 'sass', 'less']:
+            elif first_part in ["css", "sass", "less"]:
                 return "CSS"
-            elif first_part in ['html', 'markup']:
+            elif first_part in ["html", "markup"]:
                 return "HTML"
-            elif first_part in ['python', 'py']:
+            elif first_part in ["python", "py"]:
                 return "Python"
-            elif first_part in ['ruby', 'rb']:
+            elif first_part in ["ruby", "rb"]:
                 return "Ruby"
-            elif first_part in ['git']:
+            elif first_part in ["git"]:
                 return "Git"
-            elif first_part in ['docker', 'kubernetes', 'k8s']:
+            elif first_part in ["docker", "kubernetes", "k8s"]:
                 return "DevOps"
-            elif first_part in ['vim']:
+            elif first_part in ["vim"]:
                 return "Vim"
-            elif first_part in ['cli', 'terminal', 'shell']:
+            elif first_part in ["cli", "terminal", "shell"]:
                 return "CLI"
-            elif first_part in ['db', 'sql', 'database']:
+            elif first_part in ["db", "sql", "database"]:
                 return "Databases"
-        
+
         return category
-            
+
     def _get_fallback_topics(self) -> Dict[str, str]:
         """Return a predefined list of common topics."""
         return {
@@ -279,14 +277,12 @@ class DevhintsSource:
             "analytics": "Analytics",
             "mixpanel": "Analytics",
             "google_analytics": "Analytics",
-
             # Ansible
             "ansible": "Ansible",
             "ansible-examples": "Ansible",
             "ansible-guide": "Ansible",
             "ansible-modules": "Ansible",
             "ansible-roles": "Ansible",
-
             # Apps
             "atom": "Apps",
             "editorconfig": "Apps",
@@ -298,12 +294,10 @@ class DevhintsSource:
             "sublime-text": "Apps",
             "vscode": "Apps",
             "weechat": "Apps",
-
             # C-like
             "c_preprocessor": "C-like",
             "csharp7": "C-like",
             "go": "C-like",
-
             # CLI
             "adb": "CLI",
             "animated_gif": "CLI",
@@ -340,7 +334,6 @@ class DevhintsSource:
             "watchexec": "CLI",
             "yum": "CLI",
             "zsh": "CLI",
-
             # CSS
             "bootstrap": "CSS",
             "bulma": "CSS",
@@ -353,14 +346,12 @@ class DevhintsSource:
             "cssnext": "CSS",
             "sass": "CSS",
             "stylus": "CSS",
-
             # Databases
             "knex": "Databases",
             "mysql": "Databases",
             "postgresql-json": "Databases",
             "postgresql": "Databases",
             "sql-join": "Databases",
-
             # DevOps
             "awscli": "DevOps",
             "chef": "DevOps",
@@ -374,7 +365,6 @@ class DevhintsSource:
             "travis": "DevOps",
             "vagrant": "DevOps",
             "vagrantfile": "DevOps",
-
             # Elixir
             "elixir": "Elixir",
             "elixir-metaprogramming": "Elixir",
@@ -387,7 +377,6 @@ class DevhintsSource:
             "phoenix-migrations": "Elixir",
             "phoenix-routing": "Elixir",
             "phoenix@1.2": "Elixir",
-
             # Git
             "git": "Git",
             "git-branch": "Git",
@@ -397,7 +386,6 @@ class DevhintsSource:
             "git-revisions": "Git",
             "git-tricks": "Git",
             "tig": "Git",
-
             # HTML
             "appcache": "HTML",
             "applinks": "HTML",
@@ -411,10 +399,8 @@ class DevhintsSource:
             "ie_bugs": "HTML",
             "layout-thrashing": "HTML",
             "xpath": "HTML",
-
             # Java & JVM
             "kotlin": "Java & JVM",
-
             # JavaScript
             "canvas": "JavaScript",
             "dom-range": "JavaScript",
@@ -432,7 +418,6 @@ class DevhintsSource:
             "vue": "JavaScript",
             "vue@1.0.28": "JavaScript",
             "web-workers": "JavaScript",
-
             # JavaScript Libraries
             "101": "JavaScript Libraries",
             "angularjs": "JavaScript Libraries",
@@ -508,12 +493,10 @@ class DevhintsSource:
             "yargs": "JavaScript Libraries",
             "yarn": "JavaScript Libraries",
             "zombie": "JavaScript Libraries",
-
             # Jekyll
             "gh-pages": "Jekyll",
             "jekyll-github": "Jekyll",
             "jekyll": "Jekyll",
-
             # Ledger
             "hledger": "Ledger",
             "ledger": "Ledger",
@@ -522,7 +505,6 @@ class DevhintsSource:
             "ledger-format": "Ledger",
             "ledger-periods": "Ledger",
             "ledger-query": "Ledger",
-
             # Markup
             "emmet": "Markup",
             "haml": "Markup",
@@ -533,12 +515,10 @@ class DevhintsSource:
             "textile": "Markup",
             "tomdoc": "Markup",
             "yaml": "Markup",
-
             # macOS
             "applescript": "macOS",
             "macos-mouse-acceleration": "macOS",
             "osx": "macOS",
-
             # Node.js
             "nodejs": "Node.js",
             "nodejs-assert": "Node.js",
@@ -547,15 +527,12 @@ class DevhintsSource:
             "nodejs-process": "Node.js",
             "nodejs-stream": "Node.js",
             "package-json": "Node.js",
-
             # PHP
             "php": "PHP",
-
             # Python
             "jinja": "Python",
             "mako": "Python",
             "python": "Python",
-
             # Rails
             "arel": "Rails",
             "rails": "Rails",
@@ -568,7 +545,6 @@ class DevhintsSource:
             "rails-plugins": "Rails",
             "rails-routes": "Rails",
             "rails-tricks": "Rails",
-
             # React
             "awesome-redux": "React",
             "enzyme": "React",
@@ -578,7 +554,6 @@ class DevhintsSource:
             "react-router": "React",
             "react@0.14": "React",
             "redux": "React",
-
             # Ruby
             "activeadmin": "Ruby",
             "bundler": "Ruby",
@@ -592,7 +567,6 @@ class DevhintsSource:
             "ruby21": "Ruby",
             "rubygems": "Ruby",
             "stimulus-reflex": "Ruby",
-
             # Ruby Libraries
             "capybara": "Ruby Libraries",
             "chunky_png": "Ruby Libraries",
@@ -608,7 +582,6 @@ class DevhintsSource:
             "ronn": "Ruby Libraries",
             "sequel": "Ruby Libraries",
             "slim": "Ruby Libraries",
-
             # Vim
             "projectionist": "Vim",
             "tabular": "Vim",
@@ -622,7 +595,6 @@ class DevhintsSource:
             "vimscript": "Vim",
             "vimscript-functions": "Vim",
             "vimscript-snippets": "Vim",
-
             # Others
             "bolt": "Others",
             "cask-index": "Others",
@@ -670,14 +642,14 @@ class DevhintsSource:
             "unicode": "Others",
             "vainglory": "Others",
             "watchman": "Others",
-            "znc": "Others"
-        } 
+            "znc": "Others",
+        }
 
     async def get_sheets(self) -> List[Dict[str, str]]:
         """Get list of available cheat sheets."""
         if self.cache_file.exists():
             try:
-                with open(self.cache_file, 'r') as f:
+                with open(self.cache_file, "r") as f:
                     return json.load(f)
             except Exception as e:
                 logger.error(f"Error reading cache: {e}")
@@ -686,24 +658,21 @@ class DevhintsSource:
             async with httpx.AsyncClient() as client:
                 response = await client.get(self.base_url)
                 if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, 'html.parser')
+                    soup = BeautifulSoup(response.text, "html.parser")
                     sheets = []
-                    
+
                     # Find all cheat sheet links
                     for link in soup.select('a[href^="/"]'):
-                        href = link.get('href')
-                        if href and href.startswith('/') and not href == '/':
+                        href = link.get("href")
+                        if href and href.startswith("/") and not href == "/":
                             title = link.get_text().strip()
                             if title:
-                                sheets.append({
-                                    'title': title,
-                                    'path': href.lstrip('/')
-                                })
-                    
+                                sheets.append({"title": title, "path": href.lstrip("/")})
+
                     # Cache the sheets list
-                    with open(self.cache_file, 'w') as f:
+                    with open(self.cache_file, "w") as f:
                         json.dump(sheets, f)
-                    
+
                     return sheets
         except Exception as e:
             logger.error(f"Error fetching sheets: {e}")
@@ -715,19 +684,19 @@ class DevhintsSource:
             # Check if cache directory exists
             if not self.cache_dir.exists():
                 return False
-                
+
             # Check if sheets list cache exists
             if not self.cache_file.exists():
                 return False
-                
+
             # Check if common sheets are cached
             for sheet in self.common_sheets:
                 cache_path = self.sheets_cache / sheet
                 if not cache_path.exists():
                     return False
-                    
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Error checking sync status: {e}")
             return False
@@ -737,24 +706,24 @@ class DevhintsSource:
         try:
             # Create cache directory if it doesn't exist
             self.sheets_cache.mkdir(parents=True, exist_ok=True)
-            
+
             # Get list of all files from GitHub API
-            headers = {
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "application/vnd.github.v3+json"
-            }
-            
+            headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/vnd.github.v3+json"}
+
             logger.debug("Fetching repository tree from GitHub API...")
             response = httpx.get(self.api_url, headers=headers, timeout=10.0)
-            
+
             if response.status_code != 200:
                 logger.error(f"GitHub API returned status code {response.status_code}")
                 return False
-                
+
             data = response.json()
-            md_files = [item['path'] for item in data.get('tree', []) 
-                       if item.get('path', '').endswith('.md')]
-            
+            md_files = [
+                item["path"]
+                for item in data.get("tree", [])
+                if item.get("path", "").endswith(".md")
+            ]
+
             # First sync common sheets
             for sheet in self.common_sheets:
                 if sheet in md_files:
@@ -764,19 +733,19 @@ class DevhintsSource:
                         if sheet_response.status_code == 200:
                             sheet_path = self.sheets_cache / sheet
                             sheet_path.parent.mkdir(parents=True, exist_ok=True)
-                            with open(sheet_path, 'w', encoding='utf-8') as f:
+                            with open(sheet_path, "w", encoding="utf-8") as f:
                                 f.write(sheet_response.text)
                             logger.debug(f"Cached {sheet}")
                     except Exception as e:
                         logger.error(f"Error syncing {sheet}: {e}")
                         continue
-            
+
             # Cache the file list
-            with open(self.cache_file, 'w') as f:
+            with open(self.cache_file, "w") as f:
                 json.dump(md_files, f)
-            
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Error during sync: {e}")
             return False
@@ -784,15 +753,15 @@ class DevhintsSource:
     async def get_sheet(self, path: str) -> Optional[str]:
         """Get a specific cheat sheet by path."""
         cache_path = self.sheets_cache / f"{path}.html"
-        
+
         # Check cache first
         if cache_path.exists():
             try:
-                with open(cache_path, 'r', encoding='utf-8') as f:
+                with open(cache_path, "r", encoding="utf-8") as f:
                     return f.read()
             except Exception as e:
                 logger.error(f"Error reading cache: {e}")
-        
+
         # Fetch from website if not in cache
         try:
             url = f"{self.base_url}/{path}"
@@ -802,7 +771,7 @@ class DevhintsSource:
                     content = response.text
                     # Cache the result
                     cache_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(cache_path, 'w', encoding='utf-8') as f:
+                    with open(cache_path, "w", encoding="utf-8") as f:
                         f.write(content)
                     return content
                 else:
@@ -818,4 +787,4 @@ class DevhintsSource:
             return self._make_request(url)
         except Exception as e:
             logger.error(f"Error fetching content for {query}: {e}")
-            return None 
+            return None

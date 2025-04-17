@@ -7,4 +7,4 @@ from .tldr import TLDRSource
 from .cheatsh import CheatShSource
 from .devhints import DevhintsSource
 
-__all__ = ['TLDRSource', 'CheatShSource', 'DevhintsSource'] 
+__all__ = ["TLDRSource", "CheatShSource", "DevhintsSource"]
