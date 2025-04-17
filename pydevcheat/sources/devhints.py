@@ -33,6 +33,8 @@ class DevhintsSource:
         self.cache_file = self.cache_dir / 'sheets.json'
         self.sheets_cache = self.cache_dir / 'sheets'
         self.sheets_cache.mkdir(exist_ok=True)
+        self.rate_limit_delay = 2.0  # seconds between requests
+        self.last_request_time = 0
 
         # Common cheat sheets to pre-cache
         self.common_sheets = [
@@ -807,4 +809,13 @@ class DevhintsSource:
                     return None
         except Exception as e:
             logger.error(f"Error fetching sheet: {e}")
+            return None
+
+    def fetch_content(self, query: str) -> Optional[str]:
+        """Fetch content for a given query from the repository."""
+        try:
+            url = f"{self.base_url}/{query}"
+            return self._make_request(url)
+        except Exception as e:
+            logger.error(f"Error fetching content for {query}: {e}")
             return None 

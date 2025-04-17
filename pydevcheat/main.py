@@ -6,7 +6,7 @@ from rich.table import Table
 from rich.style import Style
 from rich.text import Text
 from rich.box import DOUBLE, SQUARE, ROUNDED
-from typing import Optional, List
+from typing import Optional, List, Dict
 import json
 import os
 from pathlib import Path
@@ -15,11 +15,84 @@ import pyperclip
 from .gui import run_gui
 import logging
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+import requests
+import signal
+from functools import wraps
+import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from pydevcheat.exceptions import SourceError, NetworkError
 
 # Configure logging to suppress all debug messages
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("pydevcheat").setLevel(logging.WARNING)
+
+class PyDevCheat:
+    """Main class for the PyDevCheat application."""
+    
+    def __init__(self, cache_dir: Optional[str] = None):
+        """
+        Initialize the PyDevCheat application.
+        
+        Args:
+            cache_dir: Optional custom cache directory path
+        """
+        self.cache_dir = Path(cache_dir) if cache_dir else Path.home() / ".pydevcheat" / "cache"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Initialize sources
+        self.sources = {
+            "tldr": TLDRSource(),
+            "cheatsh": CheatShSource(),
+            "devhints": DevhintsSource()
+        }
+    
+    def cheat(self, query: str, source: str = "tldr", copy_to_clipboard: bool = False) -> str:
+        """
+        Search for a command or topic in the specified source.
+        
+        Args:
+            query: The command or topic to search for
+            source: The source to search in (tldr, cheatsh, devhints)
+            copy_to_clipboard: Whether to copy the result to clipboard
+            
+        Returns:
+            The search result as a string
+            
+        Raises:
+            SourceError: If no results are found
+            NetworkError: If a network error occurs
+        """
+        if not query:
+            raise ValueError("Query cannot be empty")
+        
+        if len(query) > 100:
+            raise ValueError("Query is too long (max 100 characters)")
+        
+        if source not in self.sources:
+            raise ValueError(f"Unknown source: {source}")
+        
+        selected_source = self.sources[source]
+        
+        try:
+            # Search with timeout
+            result = with_timeout(selected_source.search, args=(query,), timeout=5)
+            if not result:
+                raise SourceError(f"No results found for '{query}' in {source}")
+            
+            # Handle successful result
+            if copy_to_clipboard:
+                pyperclip.copy(result)
+            
+            return result
+            
+        except TimeoutError:
+            raise TimeoutError(f"Search timed out for '{query}' in {source}")
+        except Exception as e:
+            if isinstance(e, (SourceError, NetworkError)):
+                raise
+            raise NetworkError(f"Error searching '{query}' in {source}: {str(e)}")
 
 app = typer.Typer(
     name="pydevcheat",
@@ -32,173 +105,151 @@ console = Console()
 CACHE_DIR = Path.home() / ".pydevcheat" / "cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_FILE = CACHE_DIR / "cheats.json"
+TLDR_CACHE_FILE = CACHE_DIR / "tldr_cache.json"
 
 # Initialize sources
 tldr_source = TLDRSource()
 cheatsh_source = CheatShSource()
 devhints_source = DevhintsSource()
 
+# Constants
+SEARCH_TIMEOUT = 5  # seconds
+
 def load_cache():
+    """Load cache from file, return empty dict if file doesn't exist or is corrupted."""
     if CACHE_FILE.exists():
-        with open(CACHE_FILE, "r") as f:
-            return json.load(f)
+        try:
+            with open(CACHE_FILE, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return {}
     return {}
 
 def save_cache(cache_data):
-    with open(CACHE_FILE, "w") as f:
-        json.dump(cache_data, f)
+    """Save cache to file, silently handle errors."""
+    try:
+        with open(CACHE_FILE, "w") as f:
+            json.dump(cache_data, f)
+    except IOError:
+        pass  # Silently handle permission errors
 
 def wrap_text(text: str, width: int) -> List[str]:
     """
     Wrap text to specified width without breaking words.
+    Handles empty strings, long words, and special characters.
     """
-    words = text.split()
+    if not text:
+        return [""]
+        
+    # Split by newlines and tabs first
+    paragraphs = text.replace('\t', '    ').split('\n')
     lines = []
-    current_line = []
-    current_length = 0
     
-    for word in words:
-        if current_length + len(word) + (1 if current_line else 0) <= width:
-            if current_line:
-                current_length += 1  # space
-            current_line.append(word)
-            current_length += len(word)
-        else:
-            if current_line:
-                lines.append(' '.join(current_line))
-            current_line = [word]
-            current_length = len(word)
-    
-    if current_line:
-        lines.append(' '.join(current_line))
+    for paragraph in paragraphs:
+        if not paragraph.strip():
+            lines.append("")
+            continue
+            
+        words = paragraph.split()
+        current_line = []
+        current_length = 0
+        
+        for word in words:
+            # If a single word is longer than width, we need to break it
+            if len(word) > width:
+                if current_line:
+                    lines.append(' '.join(current_line))
+                    current_line = []
+                    current_length = 0
+                # Break the long word into chunks
+                for i in range(0, len(word), width):
+                    lines.append(word[i:i + width])
+            else:
+                if current_length + len(word) + (1 if current_line else 0) <= width:
+                    if current_line:
+                        current_length += 1  # space
+                    current_line.append(word)
+                    current_length += len(word)
+                else:
+                    if current_line:
+                        lines.append(' '.join(current_line))
+                    current_line = [word]
+                    current_length = len(word)
+        
+        if current_line:
+            lines.append(' '.join(current_line))
     
     return lines
 
+def format_error(message: str) -> str:
+    """Format error message with rich styling."""
+    return f"[red]Error: {message}[/red]"
+
+def with_timeout(func, timeout):
+    """Run a function with a timeout using ThreadPoolExecutor."""
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(func)
+        try:
+            return future.result(timeout=timeout)
+        except FuturesTimeoutError:
+            raise TimeoutError("Search operation timed out")
+
 @app.command()
 def cheat(
-    query: List[str] = typer.Argument(..., help="The command or topic to search for"),
-    source: str = typer.Option("tldr", help="Source to search from (tldr, cheatsh, devhints)"),
-    copy: bool = typer.Option(False, "--copy", "-c", help="Copy result to clipboard"),
-    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug output"),
-):
+    query: str = typer.Argument(..., help="The command or topic to search for"),
+    source: str = typer.Option("tldr", help="The source to search (tldr, cheatsh, devhints)"),
+    copy: bool = typer.Option(False, help="Copy the result to clipboard"),
+) -> None:
     """
-    Display cheat sheet for a given command or topic.
+    Search for command cheatsheets from various sources.
     """
-    # Join multiple query words
-    query_str = " ".join(query)
-    
-    if debug:
-        console.print(f"[yellow]Debug: Searching for '{query_str}' in {source}[/yellow]")
-    
-    cache = load_cache()
-    cache_key = f"{source}:{query_str}"
-    
-    if cache_key in cache:
-        if debug:
-            console.print("[yellow]Debug: Found result in cache[/yellow]")
-        result = cache[cache_key]
-    else:
-        if debug:
-            console.print("[yellow]Debug: Searching in source...[/yellow]")
-        if source == "tldr":
-            result = tldr_source.search(query_str)
-        elif source == "cheatsh":
-            result = cheatsh_source.search(query_str)
-        elif source == "devhints":
-            result = devhints_source.search(query_str)
-        else:
-            console.print(f"[red]Unknown source: {source}. Available sources: tldr, cheatsh, devhints[/red]")
-            raise typer.Exit(1)
-        
-        if not result:
-            console.print(f"[red]No results found for '{query_str}'[/red]")
-            raise typer.Exit(1)
-            
-        cache[cache_key] = result
-        save_cache(cache)
+    try:
+        # Input validation
+        if not query:
+            format_error("Query cannot be empty")
+            raise typer.Exit(code=1)
+        if len(query) > 100:  # Reasonable limit for query length
+            format_error("Query is too long (max 100 characters)")
+            raise typer.Exit(code=1)
 
-    # Create the title panel
-    title = Text()
-    title.append("⚡ ", style="bold yellow")
-    title.append("[ ", style="bold blue")
-    title.append("CHEAT", style="bold yellow")
-    title.append("::", style="bold blue")
-    title.append("SHEET", style="bold yellow")
-    title.append(" ]", style="bold blue")
-    title.append(" [ ", style="bold blue")
-    title.append(query_str.upper(), style="bold cyan")
-    title.append(" ] ⚡", style="bold blue")
-    
-    console.print()
-    console.print(Panel(title, border_style="blue", box=SQUARE))
+        # Source selection
+        source_map = {
+            "tldr": tldr_source,
+            "cheatsh": cheatsh_source,
+            "devhints": devhints_source
+        }
 
-    # Create and style the table
-    table = Table(
-        show_header=True,
-        box=SQUARE,
-        padding=(0, 1),
-        show_edge=True,
-        border_style="blue",
-        header_style="bold yellow",
-        title_style="bold yellow",
-        width=100
-    )
-    
-    table.add_column("COMMAND", style="cyan bold", justify="left", width=35)
-    table.add_column("DESCRIPTION", style="green", justify="left", width=65)
+        if source not in source_map:
+            format_error(f"Unknown source: {source}")
+            raise typer.Exit(code=1)
 
-    # Process and add content to table
-    current_section = None
-    
-    for line in result.split('\n'):
-        line = line.strip()
-        if not line:
-            continue
-            
-        if line.startswith('#'):
-            if current_section:
-                # Add a separator between sections
-                table.add_row("═" * 35, "═" * 65, style="blue")
-            current_section = line.replace('#', '').strip()
-            # Add section header
-            table.add_row(
-                Text("┌──[ " + current_section.upper() + " ]", style="bold yellow"),
-                Text("", style="bold yellow")
-            )
-            table.add_row("└" + "─" * 34, "─" * 65, style="dim blue")
-        elif '#' in line:
-            cmd, desc = line.split('#', 1)
-            cmd = cmd.strip()
-            desc = desc.strip()
-            
-            # Word wrap the description
-            wrapped_desc = wrap_text(desc, 60)
-            if wrapped_desc:
-                # Add first line with cyberpunk-style arrow
-                table.add_row(
-                    Text("│ > " + cmd, style="cyan bold"),
-                    Text(wrapped_desc[0], style="green")
-                )
-                # Add continuation lines if any
-                for cont_line in wrapped_desc[1:]:
-                    table.add_row(
-                        Text("│   ", style="cyan bold"),
-                        Text(cont_line, style="green")
-                    )
+        selected_source = source_map[source]
 
-    # Display the table in a panel with a cyberpunk border
-    console.print(Panel(
-        table,
-        border_style="blue",
-        box=SQUARE,
-        padding=(0, 1),
-        title="[bold blue]<<[bold yellow] COMMAND REFERENCE [bold blue]>>[/bold blue]",
-        subtitle="[blue dim][ Press Ctrl+C to exit ][/blue dim]"
-    ))
-    
-    if copy:
-        pyperclip.copy(result)
-        console.print("\n[bold blue]>>[/bold blue] [bold green]Command reference copied to clipboard![/bold green] [bold blue]<<[/bold blue]")
+        try:
+            # Search with timeout
+            result = with_timeout(selected_source.search, args=(query,), timeout=5)
+            if not result:
+                format_error(f"No results found for '{query}' in {source}")
+                raise typer.Exit(code=1)
+
+            # Handle successful result
+            if copy:
+                pyperclip.copy(result)
+                typer.echo(f"Result copied to clipboard from {source}!")
+            typer.echo(result)
+
+        except TimeoutError:
+            format_error(f"Search timed out for '{query}' in {source}")
+            raise typer.Exit(code=1)
+        except Exception as e:
+            format_error(f"Error searching '{query}' in {source}: {str(e)}")
+            raise typer.Exit(code=1)
+
+    except typer.Exit as e:
+        raise e
+    except Exception as e:
+        format_error(f"Unexpected error: {str(e)}")
+        raise typer.Exit(code=1)
 
 @app.command()
 def sync():

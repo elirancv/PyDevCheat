@@ -9,6 +9,8 @@ from tenacity import (
     after_log
 )
 from httpx import HTTPError, RequestError
+import concurrent.futures
+import textwrap
 
 logger = logging.getLogger(__name__)
 
@@ -66,4 +68,43 @@ def handle_source_error(source: str, error: Exception) -> None:
     if isinstance(error, (HTTPError, RequestError)):
         raise NetworkError(error_msg) from error
     else:
-        raise SourceError(error_msg) from error 
+        raise SourceError(error_msg) from error
+
+def with_timeout(func, *args, timeout=5, **kwargs):
+    """
+    Execute a function with a timeout.
+
+    Args:
+        func: The function to execute
+        *args: Positional arguments for the function
+        timeout: Timeout in seconds (default: 5)
+        **kwargs: Keyword arguments for the function
+
+    Returns:
+        The result of the function
+
+    Raises:
+        TimeoutError: If the function execution exceeds the timeout
+    """
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(func, *args, **kwargs)
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            raise TimeoutError(f"Function execution timed out after {timeout} seconds")
+
+def wrap_text(text, width=80):
+    """
+    Wrap text to a specified width.
+
+    Args:
+        text: Text to wrap (string or list of strings)
+        width: Maximum width of wrapped lines (default: 80)
+
+    Returns:
+        Wrapped text as a string
+    """
+    if isinstance(text, list):
+        text = '\n'.join(text)
+    return textwrap.fill(text, width=width) 

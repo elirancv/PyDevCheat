@@ -48,6 +48,18 @@ class CheatShSource:
             'mongodb', 'postgresql', 'mysql', 'redis',
             'nginx', 'apache', 'aws', 'azure', 'gcp'
         ]
+        
+        self.last_request_time = 0
+        self.rate_limit_delay = 2.0  # seconds between requests
+    
+    def _enforce_rate_limit(self):
+        """Enforce rate limiting by sleeping if necessary."""
+        current_time = time.time()
+        elapsed = current_time - self.last_request_time
+        if elapsed < self.rate_limit_delay:
+            sleep_time = self.rate_limit_delay - elapsed
+            time.sleep(sleep_time)
+        self.last_request_time = time.time()
     
     @retry_request
     def _make_request(self, url: str) -> str:
@@ -58,47 +70,27 @@ class CheatShSource:
     
     def search(self, query: str) -> Optional[str]:
         """
-        Search cheat.sh for a given query and return formatted results.
+        Search for a cheatsheet by query and return its contents.
         Returns None if no results found or error occurs.
         """
         try:
             # Clean up query
-            query = query.lower().strip()
+            query = query.lower().replace(' ', '+')
             
-            # Try different URL patterns
-            urls = []
-            if '/' in query:
-                base_query = query
-            else:
-                base_query = query.replace(' ', '+')
+            # Enforce rate limiting
+            self._enforce_rate_limit()
             
-            # Try different formats
-            urls.extend([
-                f"{self.base_url}/{base_query}",
-                f"{self.base_url}/{base_query}/:list",
-                f"{self.base_url}/{base_query}?Q"
-            ])
+            # Make the request
+            url = f"{self.base_url}/{query}"
+            response = self.client.get(url, timeout=10)
+            response.raise_for_status()
             
-            content = None
-            for url in urls:
-                try:
-                    content = self._make_request(url)
-                    if content and not content.startswith("Unknown topic"):
-                        break
-                except Exception as e:
-                    logger.warning(f"Failed to fetch {url}: {e}")
-                    continue
-
-            if not content or content.startswith("Unknown topic"):
-                return None
-
-            # Clean and format the content
-            cleaned_content = self.clean_content(content)
-            if not cleaned_content:
+            content = response.text
+            if not content or "Unknown topic." in content:
                 return None
                 
-            return cleaned_content
-
+            return self.clean_content(content)
+            
         except Exception as e:
             handle_source_error("cheat.sh", e)
             return None

@@ -6,9 +6,11 @@ import subprocess
 import shutil
 from difflib import get_close_matches
 from ..utils import create_retry_decorator, handle_source_error, NetworkError, SourceError
+import json
+import requests
 
 class TLDRSource:
-    """A source that fetches cheat sheets from TLDR pages."""
+    """A source that fetches cheat sheets from the tldr-pages repository."""
     
     # Create retry decorator for network requests
     retry_request = create_retry_decorator(
@@ -20,11 +22,34 @@ class TLDRSource:
     def __init__(self):
         """Initialize the TLDRSource."""
         self.base_url = "https://raw.githubusercontent.com/tldr-pages/tldr/master/pages"
+        self.cache_dir = Path.home() / '.pydevcheat' / 'cache' / 'tldr'
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_file = self.cache_dir / 'cache.json'
+        self._load_cache()
         self.local_path = Path.home() / ".pydevcheat" / "tldr-pages"
         self.command_cache = {}
         
         # Create directory if it doesn't exist
         self.local_path.mkdir(parents=True, exist_ok=True)
+    
+    def _load_cache(self):
+        """Load the cache from disk."""
+        if self.cache_file.exists():
+            try:
+                with open(self.cache_file, 'r') as f:
+                    self.cache = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                self.cache = {}
+        else:
+            self.cache = {}
+    
+    def _save_cache(self):
+        """Save the cache to disk."""
+        try:
+            with open(self.cache_file, 'w') as f:
+                json.dump(self.cache, f)
+        except IOError:
+            pass
     
     @retry_request
     def _make_request(self, url: str) -> str:
@@ -52,115 +77,59 @@ class TLDRSource:
             handle_source_error("tldr", e)
             return False
     
-    def search(self, query: str) -> str:
-        """Search for a command in TLDR pages."""
-        try:
-            # First try to find an exact match
-            result = self._search_exact(query)
-            if result:
-                return result
-                
-            # If no exact match, try fuzzy search
-            return self._search_fuzzy(query)
-        except Exception as e:
-            handle_source_error("tldr", e)
-            return f"# Error searching TLDR pages: {str(e)}"
-    
-    def _search_exact(self, query: str) -> Optional[str]:
-        """Search for an exact command match."""
-        # Try common platforms
-        platforms = ["common", "linux", "windows", "osx"]
+    def search(self, query: str) -> Optional[str]:
+        """
+        Search for a cheatsheet by query and return its contents.
+        Returns None if no results found or error occurs.
         
-        # Handle multi-word queries
-        query_parts = query.split()
-        if len(query_parts) > 1:
-            # For git commands, try the git-subcommand format
-            if query_parts[0] == "git":
-                subcommand = query_parts[1]
-                git_command = f"git-{subcommand}"
-                print(f"Looking for git subcommand: {git_command}")
-                for platform in platforms:
-                    path = self.local_path / "pages" / platform / f"{git_command}.md"
-                    print(f"Checking path: {path}")
-                    if path.exists():
-                        print(f"Found file at: {path}")
-                        with open(path, 'r', encoding='utf-8') as f:
-                            content = f.read()
-                            print(f"File content:\n{content}")
-                            parsed = self._parse_markdown(content)
-                            print(f"Parsed content:\n{parsed}")
-                            return parsed
-                
-                # If no specific subcommand found, fall back to general git command
-                command = "git"
-                for platform in platforms:
-                    path = self.local_path / "pages" / platform / f"{command}.md"
-                    if path.exists():
-                        with open(path, 'r', encoding='utf-8') as f:
-                            content = self._parse_markdown(f.read())
-                            # Add a note about the specific subcommand
-                            return f"# Showing results for '{command}'\n# Use '--source cheatsh' for '{query}'\n\n{content}"
-            else:
-                # Try the full command first
-                for platform in platforms:
-                    path = self.local_path / "pages" / platform / f"{query}.md"
-                    if path.exists():
-                        with open(path, 'r', encoding='utf-8') as f:
-                            return self._parse_markdown(f.read())
-                
-                # Try the first word as a command
-                command = query_parts[0]
-                for platform in platforms:
-                    path = self.local_path / "pages" / platform / f"{command}.md"
-                    if path.exists():
-                        with open(path, 'r', encoding='utf-8') as f:
-                            content = self._parse_markdown(f.read())
-                            # Add a note about the specific subcommand
-                            return f"# Showing results for '{command}'\n# Use '--source cheatsh' for '{query}'\n\n{content}"
-        else:
-            # Single word query
-            for platform in platforms:
-                path = self.local_path / "pages" / platform / f"{query}.md"
-                if path.exists():
-                    with open(path, 'r', encoding='utf-8') as f:
-                        return self._parse_markdown(f.read())
-        return None
-    
-    def _search_fuzzy(self, query: str) -> str:
-        """Perform a fuzzy search for the command."""
-        # Get all available commands
-        if not self.command_cache:
-            self._build_command_cache()
-        
-        # Try to find close matches
-        query_parts = query.split()
-        if len(query_parts) > 1:
-            command = query_parts[0]
-        else:
-            command = query
+        Args:
+            query: The command to search for
             
-        matches = get_close_matches(command, self.command_cache.keys(), n=3, cutoff=0.6)
-        
-        if matches:
-            result = ["# No exact match found. Did you mean:"]
-            for match in matches:
-                result.append(f"# - {match}")
-            result.append("\n# Try one of these commands or use '--source cheatsh' for more results")
-            return "\n".join(result)
+        Returns:
+            The formatted content of the cheatsheet, or None if not found
             
-        return f"# No matches found for '{query}'\n# Try searching with a different term or use '--source cheatsh'"
-    
-    def _build_command_cache(self):
-        """Build a cache of available commands."""
-        platforms = ["common", "linux", "windows", "osx"]
+        Raises:
+            NetworkError: If a network error occurs
+            SourceError: If a source-specific error occurs
+        """
+        # Clean up query
+        query = query.lower().strip()
+        
+        # Check cache first
+        if query in self.cache:
+            return self.cache[query]
+            
+        # Try different platforms
+        platforms = ['common', 'linux', 'windows', 'osx', 'sunos']
+        content = None
+        last_error = None
+        
         for platform in platforms:
-            platform_dir = self.local_path / "pages" / platform
-            if platform_dir.exists():
-                for file in platform_dir.glob("*.md"):
-                    self.command_cache[file.stem] = True
+            url = f"{self.base_url}/{platform}/{query}.md"
+            try:
+                response = requests.get(url, timeout=10)
+                if response.status_code == 200:
+                    content = response.text
+                    break
+            except requests.exceptions.RequestException as e:
+                last_error = e
+                continue
+                
+        if not content:
+            if last_error:
+                raise NetworkError(f"Failed to fetch content: {str(last_error)}")
+            return None
+            
+        # Parse and format the content
+        formatted_content = self._format_content(content)
+        if formatted_content:
+            self.cache[query] = formatted_content
+            self._save_cache()
+            
+        return formatted_content
     
-    def _parse_markdown(self, content: str) -> str:
-        """Parse TLDR markdown into a formatted string."""
+    def _format_content(self, content: str) -> str:
+        """Format the content of the cheat sheet."""
         lines = content.split('\n')
         result = []
         current_description = None
@@ -290,4 +259,8 @@ class TLDRSource:
             result.append("\n# Try one of these commands or use '--source cheatsh' for more results")
             return "\n".join(result)
             
-        return f"# No matches found for '{query}'\n# Try searching with a different term or use '--source cheatsh'" 
+        return f"# No matches found for '{query}'\n# Try searching with a different term or use '--source cheatsh'"
+
+    def save_cache(self):
+        """Save the cache to disk."""
+        self._save_cache() 
