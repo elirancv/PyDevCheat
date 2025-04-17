@@ -19,14 +19,14 @@ class TLDRSource:
         max_wait=10
     )
     
-    def __init__(self):
+    def __init__(self, cache_dir: Optional[Path] = None):
         """Initialize the TLDRSource."""
         self.base_url = "https://raw.githubusercontent.com/tldr-pages/tldr/master/pages"
-        self.cache_dir = Path.home() / '.pydevcheat' / 'cache' / 'tldr'
+        self.cache_dir = cache_dir if cache_dir else Path.home() / '.pydevcheat' / 'cache' / 'tldr'
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_file = self.cache_dir / 'cache.json'
+        self.cache_file = self.cache_dir / 'tldr_cache.json'
         self._load_cache()
-        self.local_path = Path.home() / ".pydevcheat" / "tldr-pages"
+        self.local_path = self.cache_dir / "pages"
         self.command_cache = {}
         
         # Create directory if it doesn't exist
@@ -46,6 +46,8 @@ class TLDRSource:
     def _save_cache(self):
         """Save the cache to disk."""
         try:
+            # Ensure parent directory exists
+            self.cache_file.parent.mkdir(parents=True, exist_ok=True)
             with open(self.cache_file, 'w') as f:
                 json.dump(self.cache, f)
         except IOError:
@@ -55,6 +57,8 @@ class TLDRSource:
     def _make_request(self, url: str) -> str:
         """Make a retryable HTTP request."""
         response = httpx.get(url)
+        if response.status_code == 200:
+            return response.text
         response.raise_for_status()
         return response.text
     
@@ -107,11 +111,9 @@ class TLDRSource:
         for platform in platforms:
             url = f"{self.base_url}/{platform}/{query}.md"
             try:
-                response = requests.get(url, timeout=10)
-                if response.status_code == 200:
-                    content = response.text
-                    break
-            except requests.exceptions.RequestException as e:
+                content = self._make_request(url)
+                break
+            except Exception as e:
                 last_error = e
                 continue
                 
@@ -261,6 +263,28 @@ class TLDRSource:
             
         return f"# No matches found for '{query}'\n# Try searching with a different term or use '--source cheatsh'"
 
-    def save_cache(self):
-        """Save the cache to disk."""
-        self._save_cache() 
+    def save_cache(self, cache_data=None):
+        """
+        Save the cache to disk.
+        
+        Args:
+            cache_data: Optional dictionary of data to save. If None, saves the current cache.
+        """
+        try:
+            if cache_data is not None:
+                self.cache = cache_data
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            with open(self.cache_file, 'w') as f:
+                json.dump(self.cache, f)
+        except IOError:
+            pass  # Silently handle permission errors 
+
+    def load_cache(self) -> Dict:
+        """Load the cache from disk."""
+        if self.cache_file.exists():
+            try:
+                with open(self.cache_file, 'r') as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError):
+                return {}
+        return {} 

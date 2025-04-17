@@ -21,14 +21,14 @@ class DevhintsSource:
         max_wait=10
     )
     
-    def __init__(self):
+    def __init__(self, cache_dir: Optional[Path] = None):
         """Initialize the DevhintsSource."""
         self.base_url = "https://raw.githubusercontent.com/rstacruz/cheatsheets/master"
         self.api_url = "https://api.github.com/repos/rstacruz/cheatsheets/git/trees/master?recursive=1"
         self.topics_cache = {}
         self.local_cache_dir = Path(os.path.expanduser("~/.cache/pydevcheat/devhints"))
         self.local_cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_dir = Path.home() / '.pydevcheat' / 'cache' / 'devhints'
+        self.cache_dir = cache_dir if cache_dir else Path.home() / '.pydevcheat' / 'cache' / 'devhints'
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_file = self.cache_dir / 'sheets.json'
         self.sheets_cache = self.cache_dir / 'sheets'

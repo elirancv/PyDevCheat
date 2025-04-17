@@ -70,15 +70,13 @@ def handle_source_error(source: str, error: Exception) -> None:
     else:
         raise SourceError(error_msg) from error
 
-def with_timeout(func, *args, timeout=5, **kwargs):
+def with_timeout(func: Callable[..., T], timeout: float) -> T:
     """
     Execute a function with a timeout.
 
     Args:
         func: The function to execute
-        *args: Positional arguments for the function
-        timeout: Timeout in seconds (default: 5)
-        **kwargs: Keyword arguments for the function
+        timeout: Timeout in seconds
 
     Returns:
         The result of the function
@@ -86,8 +84,8 @@ def with_timeout(func, *args, timeout=5, **kwargs):
     Raises:
         TimeoutError: If the function execution exceeds the timeout
     """
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        future = executor.submit(func, *args, **kwargs)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(func)
         try:
             return future.result(timeout=timeout)
         except concurrent.futures.TimeoutError:

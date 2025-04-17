@@ -41,11 +41,11 @@ class PyDevCheat:
         self.cache_dir = Path(cache_dir) if cache_dir else Path.home() / ".pydevcheat" / "cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # Initialize sources
+        # Initialize sources with custom cache directory
         self.sources = {
-            "tldr": TLDRSource(),
-            "cheatsh": CheatShSource(),
-            "devhints": DevhintsSource()
+            "tldr": TLDRSource(cache_dir=self.cache_dir),  # Use root cache directory for TLDR
+            "cheatsh": CheatShSource(cache_dir=self.cache_dir / "cheatsh"),
+            "devhints": DevhintsSource(cache_dir=self.cache_dir / "devhints")
         }
     
     def cheat(self, query: str, source: str = "tldr", copy_to_clipboard: bool = False) -> str:
@@ -77,7 +77,7 @@ class PyDevCheat:
         
         try:
             # Search with timeout
-            result = with_timeout(selected_source.search, args=(query,), timeout=5)
+            result = with_timeout(lambda: selected_source.search(query), timeout=SEARCH_TIMEOUT)
             if not result:
                 raise SourceError(f"No results found for '{query}' in {source}")
             
@@ -133,13 +133,14 @@ def save_cache(cache_data):
     except IOError:
         pass  # Silently handle permission errors
 
-def wrap_text(text: str, width: int) -> List[str]:
+def wrap_text(text: str, width: int) -> str:
     """
     Wrap text to specified width without breaking words.
     Handles empty strings, long words, and special characters.
+    Returns a string with lines wrapped at the specified width.
     """
     if not text:
-        return [""]
+        return ""
         
     # Split by newlines and tabs first
     paragraphs = text.replace('\t', '    ').split('\n')
@@ -179,7 +180,7 @@ def wrap_text(text: str, width: int) -> List[str]:
         if current_line:
             lines.append(' '.join(current_line))
     
-    return lines
+    return '\n'.join(lines)
 
 def format_error(message: str) -> str:
     """Format error message with rich styling."""
@@ -206,10 +207,10 @@ def cheat(
     try:
         # Input validation
         if not query:
-            format_error("Query cannot be empty")
+            typer.echo(format_error("Query cannot be empty"))
             raise typer.Exit(code=1)
         if len(query) > 100:  # Reasonable limit for query length
-            format_error("Query is too long (max 100 characters)")
+            typer.echo(format_error("Query too long (max 100 characters)"))
             raise typer.Exit(code=1)
 
         # Source selection
@@ -220,16 +221,16 @@ def cheat(
         }
 
         if source not in source_map:
-            format_error(f"Unknown source: {source}")
+            typer.echo(format_error(f"Unknown source: {source}"))
             raise typer.Exit(code=1)
 
         selected_source = source_map[source]
 
         try:
             # Search with timeout
-            result = with_timeout(selected_source.search, args=(query,), timeout=5)
+            result = with_timeout(lambda: selected_source.search(query), timeout=SEARCH_TIMEOUT)
             if not result:
-                format_error(f"No results found for '{query}' in {source}")
+                typer.echo(format_error(f"No results found for '{query}' in {source}"))
                 raise typer.Exit(code=1)
 
             # Handle successful result
@@ -239,16 +240,16 @@ def cheat(
             typer.echo(result)
 
         except TimeoutError:
-            format_error(f"Search timed out for '{query}' in {source}")
+            typer.echo(format_error(f"Search timed out for '{query}' in {source}"))
             raise typer.Exit(code=1)
         except Exception as e:
-            format_error(f"Error searching '{query}' in {source}: {str(e)}")
+            typer.echo(format_error(f"Error searching '{query}' in {source}: {str(e)}"))
             raise typer.Exit(code=1)
 
-    except typer.Exit as e:
-        raise e
+    except typer.Exit:
+        raise
     except Exception as e:
-        format_error(f"Unexpected error: {str(e)}")
+        typer.echo(format_error(f"Unexpected error: {str(e)}"))
         raise typer.Exit(code=1)
 
 @app.command()

@@ -21,7 +21,7 @@ class CheatShSource:
         max_wait=10
     )
     
-    def __init__(self):
+    def __init__(self, cache_dir: Optional[Path] = None):
         """Initialize the CheatShSource."""
         self.base_url = "https://cheat.sh"
         self.topics_cache = {}
@@ -33,7 +33,7 @@ class CheatShSource:
             },
             follow_redirects=True
         )
-        self.cache_dir = Path.home() / '.pydevcheat' / 'cache' / 'cheatsh'
+        self.cache_dir = cache_dir if cache_dir else Path.home() / '.pydevcheat' / 'cache' / 'cheatsh'
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_file = self.cache_dir / 'topics.json'
         self.commands_cache = self.cache_dir / 'commands'
