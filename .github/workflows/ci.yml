@@ -42,12 +42,13 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
+        # Install test dependencies first
         python -m pip install pytest pytest-qt pytest-xvfb
-        # Install package in development mode with verbose output
-        python -m pip install -v -e .
-        # Install other requirements
+        # Install requirements first
         python -m pip install -r requirements.txt
         python -m pip install -r requirements-dev.txt
+        # Then install package in development mode
+        python -m pip install -v -e .
         # List installed packages for debugging
         python -m pip list
     
