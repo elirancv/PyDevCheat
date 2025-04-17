@@ -5,7 +5,7 @@
   
   [![Build Status](https://img.shields.io/github/workflow/status/elirancv/PyDevCheat/CI?style=flat-square)](https://github.com/elirancv/PyDevCheat/actions)
   [![License](https://img.shields.io/github/license/elirancv/PyDevCheat?style=flat-square)](LICENSE)
-  [![Python versions](https://img.shields.io/badge/python-3.8%20%7C%203.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue?style=flat-square)](https://pypi.org/project/pydevcheat/)
+  [![Python versions](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue?style=flat-square)](https://pypi.org/project/pydevcheat/)
   [![Version](https://img.shields.io/badge/version-0.1.0-brightgreen?style=flat-square)](https://pypi.org/project/pydevcheat/)
 </div>
 
@@ -33,7 +33,7 @@ PyDevCheat is a modern cheat sheet application that provides instant access to p
 
 ### Prerequisites
 
-- Python 3.8 or higher
+- Python 3.9 or higher
 - Git
 
 ### Setup Instructions
